@@ -5,11 +5,15 @@
  */
 package org.geoserver.security.impl;
 
+import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashMap;
+import java.util.HashSet;
+import java.util.List;
 import java.util.Map;
 import java.util.Set;
 
+import org.geoserver.catalog.LayerGroupInfo;
 import org.geoserver.security.AccessMode;
 import org.geoserver.security.GeoServerSecurityFilterChainProxy;
 import org.springframework.security.core.Authentication;
@@ -22,7 +26,7 @@ import org.springframework.security.core.GrantedAuthority;
  * @author Andrea Aime - TOPP
  * 
  */
-class SecureTreeNode {
+public class SecureTreeNode {
 
     /**
      * Special role set used to mean every possible role in the system
@@ -33,6 +37,21 @@ class SecureTreeNode {
      * The role given to the administrators
      */
     static final String ROOT_ROLE = GeoServerRole.ADMIN_ROLE.getAuthority();
+    
+    /**
+     * Depth or the security tree root
+     */
+    static int ROOT_DEPTH = 0;
+    
+    /**
+     * Depth of a workspace/global group rule
+     */
+    static int WS_LG_DEPTH = 1;
+    
+    /**
+     * Depth of a resource specific rule
+     */
+    static int RESOURCE_DEPTH = 2;
 
     Map<String, SecureTreeNode> children = new HashMap<String, SecureTreeNode>();
 
@@ -52,7 +71,7 @@ class SecureTreeNode {
      * </ul>
      */
     Map<AccessMode, Set<String>> authorizedRoles = new HashMap<AccessMode, Set<String>>();
-
+    
     /**
      * Builds a child of the specified parent node
      * 
@@ -66,7 +85,7 @@ class SecureTreeNode {
     /**
      * Builds the root of a security tree
      */
-    SecureTreeNode() {
+    public SecureTreeNode() {
         // by default we allow access for everybody in all modes for the root
         // node, since we have no parent to fall back onto
         // -> except for admin access, default is administrator
@@ -85,9 +104,9 @@ class SecureTreeNode {
      * Returns a child with the specified name, or null
      * 
      * @param name
-     * @return
+     *
      */
-    SecureTreeNode getChild(String name) {
+    public SecureTreeNode getChild(String name) {
         return children.get(name);
     }
 
@@ -95,9 +114,9 @@ class SecureTreeNode {
      * Adds a child to this path element
      * 
      * @param name
-     * @return
+     *
      */
-    SecureTreeNode addChild(String name) {
+    public SecureTreeNode addChild(String name) {
         if (getChild(name) != null)
             throw new IllegalArgumentException("This pathElement " + name
                     + " is already among my children");
@@ -118,9 +137,9 @@ class SecureTreeNode {
      * 
      * @param user
      * @param mode
-     * @return
+     *
      */
-    boolean canAccess(Authentication user, AccessMode mode) {
+    public boolean canAccess(Authentication user, AccessMode mode) {
         Set<String> roles = getAuthorizedRoles(mode);
 
         if (GeoServerSecurityFilterChainProxy.isSecurityEnabledForCurrentRequest()==false)
@@ -154,14 +173,14 @@ class SecureTreeNode {
      * collection can be null if we don't have a rule, meaning the rule will
      * have to searched in the parent node
      */
-    Set<String> getAuthorizedRoles(AccessMode mode) {
+    public Set<String> getAuthorizedRoles(AccessMode mode) {
         return authorizedRoles.get(mode);
     }
 
     /**
      * Sets the authorized roles for the specified access mode
      */
-    void setAuthorizedRoles(AccessMode mode, Set<String> roles) {
+    public void setAuthorizedRoles(AccessMode mode, Set<String> roles) {
         authorizedRoles.put(mode, roles);
     }
 
@@ -173,17 +192,80 @@ class SecureTreeNode {
      * children as well)
      * 
      * @param pathElements
-     * @return
+     *
      */
-    SecureTreeNode getDeepestNode(String[] pathElements) {
+    public SecureTreeNode getDeepestNode(String... pathElements) {
         SecureTreeNode curr = this;
+        SecureTreeNode result = this;
         for (int i = 0; i < pathElements.length; i++) {
             final SecureTreeNode next = curr.getChild(pathElements[i]);
-            if (next == null)
-                return curr;
-            else
+            if (next == null) {
+                return result;  
+            } else {
                 curr = next;
+                // don't return info about a node that has no explicit 
+                // rule associated, the parent will do
+                if(curr.authorizedRoles != null && !curr.authorizedRoles.isEmpty()) {
+                    result = curr;
+                }
+            }
         }
         return curr;
     }
+    
+    
+    /**
+     * Utility method that drills down from the current node using the specified
+     * list of child names, and returns an element only if it fully matches the provided path
+     * 
+     * @param pathElements
+     *
+     */
+    public SecureTreeNode getNode(String... pathElements) {
+        SecureTreeNode curr = this;
+        for (int i = 0; i < pathElements.length; i++) {
+            final SecureTreeNode next = curr.getChild(pathElements[i]);
+            if (next == null) {
+                return null;
+            } else {
+                curr = next;
+            }
+        }
+        return curr;
+    }
+
+    /**
+     * The children of this secure tree node
+     * 
+     *
+     */
+    Map<String, SecureTreeNode> getChildren() {
+        return children;
+    }
+
+    @Override
+    public String toString() {
+        // customized toString to avoid printing the whole tree recursively, this one prints only
+        // the info in the current level
+        return "SecureTreeNode [childrenCount=" + children.size() + ", hasParent=" 
+            + (parent != null) + ", authorizedRoles=" + authorizedRoles + "]";
+    }
+    
+    /**
+     * Returns the node depth, 0 is the root, 1 is a workspace/global layer one, 2 is layer specific
+     * @return
+     */
+    int getDepth() {
+        int depth = 0;
+        Set<SecureTreeNode> visited = new HashSet<>();
+        SecureTreeNode n = this;
+        while(n.parent != null && !visited.contains(n.parent)) {
+            depth++;
+            visited.add(n);
+            n = n.parent;
+        }
+        
+        return depth;
+    }
+    
 }

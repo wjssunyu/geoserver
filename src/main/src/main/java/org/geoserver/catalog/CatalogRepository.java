@@ -50,7 +50,9 @@ public class CatalogRepository implements Repository, Serializable {
             return (DataStore) da;
         }
         
-        LOGGER.severe( name + " is not a data store.");
+        if (LOGGER.isLoggable(Level.FINE)) {
+            LOGGER.fine(name + " is not a data store.");
+        }
         return null;
     }
 
@@ -60,7 +62,7 @@ public class CatalogRepository implements Repository, Serializable {
 
         DataStoreInfo info = getCatalog().getDataStoreByName(workspace, localName);
         if (info == null) {
-            throw new RuntimeException("Cannot find datastore " + localName + "in workspace "
+            throw new RuntimeException("Cannot find datastore " + localName + " in workspace "
                     + workspace);
         }
         try {

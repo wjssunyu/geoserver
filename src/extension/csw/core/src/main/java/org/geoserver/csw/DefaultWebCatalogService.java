@@ -5,6 +5,7 @@
  */
 package org.geoserver.csw;
 
+import java.io.File;
 import java.util.List;
 
 import net.opengis.cat.csw20.CapabilitiesType;
@@ -57,7 +58,7 @@ public class DefaultWebCatalogService implements WebCatalogService, ApplicationC
     @Override
     public CapabilitiesType getCapabilities(GetCapabilitiesType request) throws ServiceException {
         checkStore();
-        CapabilitiesType caps = new GetCapabilities(this.csw, this.store, context).run(request);
+        CapabilitiesType caps = new GetCapabilities(getServiceInfo(), this.store, context).run(request);
         
         // check for decorator extensions
         for(CapabilitiesDecorator decorator : GeoServerExtensions.extensions(CapabilitiesDecorator.class))
@@ -72,33 +73,33 @@ public class DefaultWebCatalogService implements WebCatalogService, ApplicationC
     public AttributeDescriptor[] describeRecord(DescribeRecordType request) throws ServiceException {
         checkStore();
 
-        return new DescribeRecord(this.csw, store).run(request);
+        return new DescribeRecord(getServiceInfo(), store).run(request);
     }
 
     @Override
     public CSWRecordsResult getRecords(GetRecordsType request) throws ServiceException {
         checkStore();
         List<RecordDescriptor> descriptors = GeoServerExtensions.extensions(RecordDescriptor.class, context);
-        return new GetRecords(this.csw, store, descriptors).run(request);
+        return new GetRecords(getServiceInfo(), store, descriptors).run(request);
     }
 
     @Override
     public CSWRecordsResult getRecordById(GetRecordByIdType request) throws ServiceException {
         checkStore();
         List<RecordDescriptor> descriptors = GeoServerExtensions.extensions(RecordDescriptor.class, context);
-        return new GetRecordById(this.csw, store, descriptors).run(request);
+        return new GetRecordById(getServiceInfo(), store, descriptors).run(request);
     }
 
     @Override
     public CloseableIterator<String> getDomain(GetDomainType request) throws ServiceException {
         checkStore();
-        return new GetDomain(this.csw, this.store).run(request);
+        return new GetDomain(getServiceInfo(), this.store).run(request);
     }
 
     @Override
     public RepositoryItem getRepositoryItem(GetRepositoryItemType request) throws ServiceException {
         checkStore();
-        return new GetRepositoryItem(this.csw, this.store).run(request);
+        return new GetRepositoryItem(getServiceInfo(), this.store).run(request);
     }
 
     @Override
@@ -113,6 +114,12 @@ public class DefaultWebCatalogService implements WebCatalogService, ApplicationC
         throw new ServiceException("Transactions are not supported by this CSW service");
     }
 
+    @Override
+    public List<File> directDownload(DirectDownloadType request) throws ServiceException {
+        checkStore();
+        return new DirectDownload(getServiceInfo(), this.store).run(request);
+    }
+    
     /**
      * Checks we have a store to use
      */

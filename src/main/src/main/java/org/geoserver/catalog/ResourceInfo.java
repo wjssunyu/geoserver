@@ -110,7 +110,7 @@ public interface ResourceInfo extends CatalogInfo {
      * return getNamespace().getPrefix() + ":" + getName();
      * </pre>
      * </p>
-     * @return
+     *
      */
     String prefixedName();
 
@@ -208,6 +208,13 @@ public interface ResourceInfo extends CatalogInfo {
      * @see MetadataLinkInfo
      */
     List<MetadataLinkInfo> getMetadataLinks();
+
+    /**
+     * A collection of data links for the resource.
+     * 
+     * @see DataLinkInfo
+     */
+    List<DataLinkInfo> getDataLinks();
 
     /**
      * Returns the bounds of the resource in lat / lon.
@@ -411,7 +418,7 @@ public interface ResourceInfo extends CatalogInfo {
     
     /**
      * Returns true if the resource existence should be advertised (true by default, unless otherwise set)
-     * @return
+     *
      */
     boolean isAdvertised();
     

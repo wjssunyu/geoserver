@@ -28,13 +28,14 @@ import org.geoserver.monitor.MemoryMonitorDAO;
 import org.geoserver.monitor.MonitorConfig;
 import org.geoserver.monitor.RequestData;
 import org.geoserver.monitor.RequestDataListener;
-import org.geoserver.platform.GeoServerExtensions;
 import org.geoserver.platform.GeoServerResourceLoader;
 import org.geoserver.platform.resource.Resource;
+import org.geoserver.platform.resource.Resources;
 import org.geotools.util.logging.Logging;
 import org.springframework.context.ApplicationEvent;
 import org.springframework.context.ApplicationListener;
 import org.springframework.context.event.ContextClosedEvent;
+
 import freemarker.template.Configuration;
 import freemarker.template.Template;
 
@@ -64,8 +65,6 @@ public class AuditLogger implements RequestDataListener, ApplicationListener<App
 
     String path;
 
-    String defaultPath;
-
     String headerTemplate;
 
     String contentTemplate;
@@ -74,8 +73,6 @@ public class AuditLogger implements RequestDataListener, ApplicationListener<App
 
     public AuditLogger(MonitorConfig config, GeoServerResourceLoader loader) throws IOException {
         this.config = config;
-        Resource monitoring = loader.get("monitoring");        
-        defaultPath = monitoring.dir().getAbsolutePath();
         templateConfig = new Configuration();
         templateConfig.setTemplateLoader(new AuditTemplateLoader(loader));
     }
@@ -93,21 +90,12 @@ public class AuditLogger implements RequestDataListener, ApplicationListener<App
             footerTemplate = getProperty("ftl.footer", String.class, null);
 
             // check the path
-            File loggingDir = new File(path);
-            if (!loggingDir.isAbsolute()) {
-                GeoServerResourceLoader loader = GeoServerExtensions.bean(GeoServerResourceLoader.class);
-                loggingDir = new File(loader.getBaseDirectory(), loggingDir.getPath());
-            }
-            if (!loggingDir.exists()) {
-                if (!loggingDir.mkdirs()) {
-                    throw new IllegalArgumentException("Could not create the audit files directory");
-                }
-            }
-
+            Resource loggingDir = Resources.fromPath(path);
+            
             path = config.getProperty(AUDIT, "path", String.class);
 
             // setup the dumper
-            this.dumper = new RequestDumper(loggingDir, rollLimit, headerTemplate, contentTemplate, footerTemplate);
+            this.dumper = new RequestDumper(loggingDir.dir(), rollLimit, headerTemplate, contentTemplate, footerTemplate);
         }
     }
 
@@ -183,7 +171,7 @@ public class AuditLogger implements RequestDataListener, ApplicationListener<App
                 }
             }
         } catch (Exception e) {
-            throw new RuntimeException("Unepected error occurred while trying to "
+            throw new RuntimeException("Unexpected error occurred while trying to "
                     + "store the request data in the logger queue", e);
         }
     }
@@ -312,7 +300,7 @@ public class AuditLogger implements RequestDataListener, ApplicationListener<App
          * Performs log-rolling if necessary
          * 
          * @param writer
-         * @return
+         *
          * @throws IOException
          */
         BufferedWriter rollWriter(BufferedWriter writer) throws Exception {

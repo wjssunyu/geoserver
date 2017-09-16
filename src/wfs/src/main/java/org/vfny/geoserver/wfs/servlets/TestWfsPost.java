@@ -1,4 +1,4 @@
-/* (c) 2014 Open Source Geospatial Foundation - all rights reserved
+/* (c) 2014 - 2016 Open Source Geospatial Foundation - all rights reserved
  * (c) 2001 - 2013 OpenPlans
  * This code is licensed under the GPL 2.0 license, available at the root
  * application directory.
@@ -14,6 +14,8 @@ import java.io.OutputStreamWriter;
 import java.io.PrintWriter;
 import java.net.URL;
 import java.net.URLDecoder;
+import java.util.logging.Level;
+import java.util.logging.Logger;
 
 import javax.servlet.ServletConfig;
 import javax.servlet.ServletException;
@@ -22,6 +24,10 @@ import javax.servlet.http.HttpServletRequest;
 import javax.servlet.http.HttpServletResponse;
 
 import org.apache.commons.codec.binary.Base64;
+import org.geoserver.config.GeoServer;
+import org.geoserver.ows.util.ResponseUtils;
+import org.geoserver.platform.GeoServerExtensions;
+import org.geotools.util.logging.Logging;
 
 
 /**
@@ -32,6 +38,15 @@ import org.apache.commons.codec.binary.Base64;
  * @version 1.0
  */
 public class TestWfsPost extends HttpServlet {
+    
+    /**
+     * The path at which TestWfsPost is exposed. Used to find the full location of GeoServer
+     * without doing complex and error prone string building
+     */
+    static final String TEST_WFS_POST_PATH = "/TestWfsPost";
+    
+    static final Logger LOGGER = Logging.getLogger(TestWfsPost.class);
+    
     /**
      * Initializes the servlet.
      *
@@ -179,6 +194,7 @@ public class TestWfsPost extends HttpServlet {
 
             try {
                 URL u = new URL(urlString);
+                validateURL(request, urlString, getProxyBaseURL() );
                 java.net.HttpURLConnection acon = (java.net.HttpURLConnection) u.openConnection();
                 acon.setAllowUserInteraction(false);
 
@@ -258,10 +274,11 @@ public class TestWfsPost extends HttpServlet {
                 //    out.print(line);
                 //}
             } catch (Exception e) {
+                LOGGER.log(Level.FINE, "Failure dealing with the request", e);
                 PrintWriter out = response.getWriter();
                 out.println("<?xml version=\"1.0\" encoding=\"UTF-8\"?>");
                 out.println("<servlet-exception>");
-                out.println(e.toString());
+                out.println(ResponseUtils.encodeXML(e.toString()));
                 out.println("</servlet-exception>");
                 out.close();
             } finally {
@@ -270,10 +287,11 @@ public class TestWfsPost extends HttpServlet {
                         xmlIn.close();
                     }
                 } catch (Exception e1) {
+                    LOGGER.log(Level.FINE, "Internal failure dealing with the request", e1);
                     PrintWriter out = response.getWriter();
                     out.println("<?xml version=\"1.0\" encoding=\"UTF-8\"?>");
                     out.println("<servlet-exception>");
-                    out.println(e1.toString());
+                    out.println(ResponseUtils.encodeXML(e1.toString()));
                     out.println("</servlet-exception>");
                     out.close();
                 }
@@ -283,13 +301,41 @@ public class TestWfsPost extends HttpServlet {
                         xmlOut.close();
                     }
                 } catch (Exception e2) {
+                    LOGGER.log(Level.FINE, "Internal failure dealing with the request", e2);
                     PrintWriter out = response.getWriter();
                     out.println("<?xml version=\"1.0\" encoding=\"UTF-8\"?>");
                     out.println("<servlet-exception>");
-                    out.println(e2.toString());
+                    out.println(ResponseUtils.encodeXML(e2.toString()));
                     out.println("</servlet-exception>");
                     out.close();
                 }
+            }
+        }
+    }
+
+    String getProxyBaseURL() {
+        GeoServer geoServer = (GeoServer) GeoServerExtensions.bean("geoServer");
+        if( geoServer != null ){
+            geoServer.getGlobal().getSettings().getProxyBaseUrl();
+        }
+        return null;
+    }
+
+    void validateURL(HttpServletRequest request, String url, String proxyBase) {
+        if(proxyBase != null) {
+            if(!url.startsWith(proxyBase)) {
+                throw new IllegalArgumentException("Invalid url requested, the demo requests should be hitting: " + proxyBase);
+            }
+        } else {
+            // use the requested url then, and remove the TestWfsPort
+            String requestedUrl = request.getRequestURL().toString();
+            // this should not happen, but let's not make it an open proxy if it does
+            if(!requestedUrl.endsWith(TEST_WFS_POST_PATH)) {
+                throw new IllegalStateException("Unepected, the TestWfsPost was accessed by a path not ending with TestWfsPost: " + requestedUrl);
+            }
+            String base = requestedUrl.substring(0, requestedUrl.lastIndexOf(TEST_WFS_POST_PATH));
+            if(!url.startsWith(base)) {
+                throw new IllegalArgumentException("Invalid url requested, the demo requests should be hitting: " + base);
             }
         }
     }

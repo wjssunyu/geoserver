@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="ISO-8859-1"?>
-<!-- 
- Copyright (C) 2014 - Open Source Geospatial Foundation. All rights reserved.
+<!--
+ Copyright (C) 2016 - Open Source Geospatial Foundation. All rights reserved.
  This code is licensed under the GPL 2.0 license, available at the root
  application directory.
  -->
@@ -13,7 +13,7 @@
  <groupId>org.geoserver</groupId>
  <artifactId>geoserver</artifactId>
  <packaging>pom</packaging>
- <version>2.7-SNAPSHOT</version>
+ <version>2.12-SNAPSHOT</version>
  <name>GeoServer</name>
 
  <scm>
@@ -23,10 +23,10 @@
  </scm>
 
  <organization>
-  <name>The Open Planning Project</name>
-  <url>http://www.openplans.org</url>
+  <name>Open Source Geospatial Foundation</name>
+  <url>http://www.osgeo.org</url>
  </organization>
- <inceptionYear>2005</inceptionYear>
+ <inceptionYear>2006</inceptionYear>
 
  <licenses>
   <license>
@@ -54,44 +54,37 @@
   <repository>
    <id>boundless</id>
    <name>Boundless Maven Repository</name>
-   <url>http://repo.boundlessgeo.com/main</url>
+   <url>https://repo.boundlessgeo.com/main/</url>
+   <!-- contains snapshot and release (including third-party-dependences)               -->
+   <!-- Restlet maven Repository (http://maven.restlet.org)                             -->
+   <!-- ucar (https://artifacts.unidata.ucar.edu/content/repositories/unidata-releases) -->
    <snapshots>
      <enabled>true</enabled>
    </snapshots>
+   <releases>
+     <enabled>true</enabled>
+   </releases>
   </repository>
   
   <repository>
     <id>osgeo</id>
     <name>Open Source Geospatial Foundation Repository</name>
     <url>http://download.osgeo.org/webdav/geotools/</url>
-    <snapshots>
-      <enabled>true</enabled>
-    </snapshots>
+    <!-- release repository used by geotools (and third-party dependencies) -->
   </repository>
-
-  <repository>
-    <id>maven-restlet</id>
-    <name>Restlet Maven Repository</name>
-    <url>http://maven.restlet.org</url>
-    <snapshots>
-      <enabled>false</enabled>
-    </snapshots>
-  </repository>
+   
+   <repository>
+      <id>geosolutions</id>
+      <name>geosolutions repository</name>
+      <url>http://maven.geo-solutions.it/</url>
+      <snapshots>
+        <enabled>true</enabled>
+      </snapshots>
+     <releases>
+       <enabled>true</enabled>
+     </releases>
+    </repository>
  </repositories>
-
- <pluginRepositories>
-  <pluginRepository>
-   <id>codehaus-snapshot-plugins</id>
-   <name>codehaus-shapshot-plugins</name>
-   <url>http://snapshots.repository.codehaus.org/</url>
-   <snapshots>
-    <enabled>true</enabled>
-   </snapshots>
-   <releases>
-    <enabled>false</enabled>
-   </releases>
-  </pluginRepository>
- </pluginRepositories>
 
  <dependencyManagement>
   <dependencies>
@@ -99,6 +92,12 @@
     <groupId>org.geoserver</groupId>
     <artifactId>gs-platform</artifactId>
     <version>${gs.version}</version>
+   </dependency>
+   <dependency>
+    <groupId>org.geoserver</groupId>
+    <artifactId>gs-platform</artifactId>
+    <version>${gs.version}</version>
+    <classifier>tests</classifier>
    </dependency>
    <dependency>
     <groupId>org.geoserver</groupId>
@@ -168,12 +167,6 @@
     <groupId>org.geoserver</groupId>
     <artifactId>gs-gwc</artifactId>
     <version>${gs.version}</version>
-    <exclusions>
-    	<exclusion>
-    		<groupId>net.sf.json-lib</groupId>
-      		<artifactId>json-lib</artifactId>
-    	</exclusion>
-    </exclusions>
    </dependency>
    <dependency>
     <groupId>org.geoserver</groupId>
@@ -387,11 +380,6 @@
    </dependency>
    <dependency>
     <groupId>org.geotools</groupId>
-    <artifactId>gt-wfs</artifactId>
-    <version>${gt.version}</version>
-   </dependency>
-   <dependency>
-    <groupId>org.geotools</groupId>
     <artifactId>gt-wfs-ng</artifactId>
     <version>${gt.version}</version>
    </dependency>
@@ -413,6 +401,11 @@
    <dependency>
      <groupId>org.geotools</groupId>
      <artifactId>gt-cql</artifactId>
+     <version>${gt.version}</version>
+   </dependency>
+    <dependency>
+     <groupId>org.geotools</groupId>
+     <artifactId>gt-csv</artifactId>
      <version>${gt.version}</version>
    </dependency>
    <dependency>
@@ -475,7 +468,18 @@
     <artifactId>gt-process-feature</artifactId>
     <version>${gt.version}</version>
    </dependency>
+   <dependency>
+    <groupId>org.geotools</groupId>
+    <artifactId>gt-geopkg</artifactId>
+    <version>${gt.version}</version>
+   </dependency>
 
+
+   <dependency>
+     <groupId>com.google.code.gson</groupId>
+     <artifactId>gson</artifactId>
+     <version>2.3.1</version>
+   </dependency>
 
    <dependency>
     <groupId>org.geowebcache</groupId>
@@ -575,6 +579,19 @@
     <artifactId>gwc-diskquota-jdbc</artifactId>
     <version>${gwc.version}</version>
    </dependency>
+   <dependency>
+    <groupId>org.geowebcache</groupId>
+    <artifactId>gwc-aws-s3</artifactId>
+    <version>${gwc.version}</version>
+   </dependency>
+
+   <!-- ORACLE -->
+   <!-- Download and install into your own repo -->
+   <dependency>
+     <groupId>com.oracle</groupId>
+     <artifactId>ojdbc7</artifactId>
+     <version>12.1.0.2</version>
+   </dependency>
 
    <dependency>
     <groupId>org.wkb4j</groupId>
@@ -585,6 +602,7 @@
     <groupId>junit</groupId>
     <artifactId>junit</artifactId>
     <version>4.11</version>
+    <scope>test</scope>
    </dependency>
    <dependency>
     <groupId>org.hamcrest</groupId>
@@ -597,6 +615,11 @@
     <version>1.3</version>
    </dependency>
    <dependency>
+    <groupId>org.hamcrest</groupId>
+    <artifactId>hamcrest-integration</artifactId>
+    <version>1.3</version>
+   </dependency>
+   <dependency>
     <groupId>xmlunit</groupId>
     <artifactId>xmlunit</artifactId>
     <version>1.3</version>
@@ -604,7 +627,7 @@
    <dependency>
     <groupId>org.easymock</groupId>
     <artifactId>easymock</artifactId>
-    <version>2.5.2</version>
+    <version>3.1</version>
    </dependency>
    <dependency>
     <groupId>org.easymock</groupId>
@@ -648,8 +671,8 @@
    </dependency>
    <dependency>
     <groupId>javax.servlet</groupId>
-    <artifactId>servlet-api</artifactId>
-    <version>2.5</version>
+    <artifactId>javax.servlet-api</artifactId>
+    <version>${servlet-api.version}</version>
    </dependency>
    <dependency>
     <groupId>oro</groupId>
@@ -657,14 +680,21 @@
     <version>2.0.8</version>
    </dependency>
    <dependency>
-    <groupId>com.mockrunner</groupId>
-    <artifactId>mockrunner</artifactId>
-    <version>0.3.6</version>
+    <groupId>org.springframework</groupId>
+    <artifactId>spring-test</artifactId>
+    <version>${spring.version}</version>
    </dependency>
    <dependency>
     <groupId>commons-beanutils</groupId>
     <artifactId>commons-beanutils</artifactId>
-    <version>1.7.0</version>
+    <version>1.9.2</version>
+    <classifier>noclassprop</classifier>
+   </dependency>
+   <dependency>
+    <groupId>commons-beanutils</groupId>
+    <artifactId>commons-beanutils</artifactId>
+    <version>1.9.2</version>
+    <scope>provided</scope>
    </dependency>
    <dependency>
     <groupId>commons-digester</groupId>
@@ -694,7 +724,7 @@
    <dependency>
     <groupId>commons-lang</groupId>
     <artifactId>commons-lang</artifactId>
-    <version>2.1</version>
+    <version>2.6</version>
    </dependency>
    <dependency>
     <groupId>commons-validator</groupId>
@@ -709,17 +739,42 @@
    <dependency>
     <groupId>commons-pool</groupId>
     <artifactId>commons-pool</artifactId>
-    <version>1.5.3</version>
+    <version>1.5.4</version>
    </dependency>
    <dependency>
     <groupId>commons-collections</groupId>
     <artifactId>commons-collections</artifactId>
-    <version>3.1</version>
+    <version>3.2.2</version>
    </dependency>
    <dependency>
-    <groupId>commons-vfs</groupId>
-    <artifactId>commons-vfs</artifactId>
-    <version>1.0</version>
+    <groupId>commons-dbcp</groupId>
+    <artifactId>commons-dbcp</artifactId>
+    <version>1.4</version>
+   </dependency>
+   <dependency>
+	<groupId>org.apache.commons</groupId>
+	<artifactId>commons-vfs2</artifactId>
+	<version>2.0</version>
+   </dependency>
+   <dependency>
+	<groupId>org.apache.commons</groupId>
+	<artifactId>commons-exec</artifactId>
+	<version>1.3</version>
+   </dependency>
+   <dependency>
+    <groupId>com.jayway.jsonpath</groupId>
+    <artifactId>json-path</artifactId>
+    <version>2.2.0</version>
+   </dependency>
+   <dependency>
+    <groupId>org.apache.httpcomponents</groupId>
+    <artifactId>httpcore</artifactId>
+    <version>4.4.4</version>
+   </dependency>
+   <dependency>
+    <groupId>org.apache.httpcomponents</groupId>
+    <artifactId>httpclient</artifactId>
+    <version>4.5.1</version>
    </dependency>
    <dependency>
     <groupId>org.springframework</groupId>
@@ -772,6 +827,11 @@
     <version>${spring.version}</version>
    </dependency>
    <dependency>
+    <groupId>org.springframework</groupId>
+    <artifactId>spring-oxm</artifactId>
+    <version>3.0.5.RELEASE</version>
+   </dependency>
+   <dependency>
     <groupId>org.springframework.security</groupId>
     <artifactId>spring-security-core</artifactId>
     <version>${spring.security.version}</version>
@@ -784,7 +844,7 @@
    <dependency>
     <groupId>org.springframework.ldap</groupId>
     <artifactId>spring-ldap-test</artifactId>
-    <version>1.3.1.RELEASE</version>
+    <version>1.3.2.RELEASE</version>
    </dependency>
 <!--
    <dependency>
@@ -817,38 +877,53 @@
    </dependency>
    <dependency>
     <groupId>org.bouncycastle</groupId>
-    <artifactId>bcprov-jdk14</artifactId>
-    <version>1.46</version>
+    <artifactId>bcprov-jdk15on</artifactId>
+    <version>1.54</version>
    </dependency>
    <dependency>
      <groupId>org.apache.wicket</groupId>
-     <artifactId>wicket</artifactId>
+     <artifactId>wicket-core</artifactId>
      <version>${wicket.version}</version>
    </dependency>
    <dependency>
      <groupId>org.apache.wicket</groupId>
-     <artifactId>wicket-extensions</artifactId>
+     <artifactId>wicket-util</artifactId>
+     <version>${wicket.version}</version>
+   </dependency>
+   <dependency>
+     <groupId>org.apache.wicket</groupId>
+     <artifactId>wicket-request</artifactId>
      <version>${wicket.version}</version>
    </dependency>
    <dependency>
      <groupId>org.apache.wicket</groupId>
      <artifactId>wicket-spring</artifactId>
      <version>${wicket.version}</version>
+   </dependency>			
+   <dependency>
+     <groupId>org.apache.wicket</groupId>
+     <artifactId>wicket-extensions</artifactId>
+     <version>${wicket.version}</version>
    </dependency>
    <dependency>
-     <groupId>org.wicketstuff</groupId>
-     <artifactId>htmlvalidator</artifactId>
-     <version>1.2</version>
+     <groupId>org.slf4j</groupId>
+     <artifactId>slf4j-api</artifactId>
+     <version>${slf4j.version}</version>
    </dependency>
    <dependency>
      <groupId>org.slf4j</groupId>
      <artifactId>slf4j-log4j12</artifactId>
-     <version>1.4.2</version>
+     <version>${slf4j.version}</version>
+   </dependency>
+   <dependency>
+     <groupId>org.slf4j</groupId>
+     <artifactId>log4j-over-slf4j</artifactId>
+     <version>${slf4j.version}</version>
    </dependency>
    <dependency>
     <groupId>log4j</groupId>
     <artifactId>log4j</artifactId>
-    <version>1.2.14</version>
+    <version>1.2.17</version>
    </dependency>
    <dependency>
     <groupId>com.lowagie</groupId>
@@ -856,32 +931,37 @@
     <version>2.1.5</version>
    </dependency>
    <dependency>
-    <groupId>org.mortbay.jetty</groupId>
-    <artifactId>jetty</artifactId>
-    <version>6.1.8</version>
+    <groupId>org.eclipse.jetty</groupId>
+    <artifactId>jetty-server</artifactId>
+    <version>${jetty.version}</version>
    </dependency>
    <dependency>
-    <groupId>org.mortbay.jetty</groupId>
-    <artifactId>jetty-naming</artifactId>
-    <version>6.1.8</version>
+    <groupId>org.eclipse.jetty</groupId>
+    <artifactId>jetty-jndi</artifactId>
+    <version>${jetty.version}</version>
    </dependency>
    <dependency>
-    <groupId>org.mortbay.jetty</groupId>
+    <groupId>org.eclipse.jetty</groupId>
     <artifactId>jetty-plus</artifactId>
-    <version>6.1.8</version>
+    <version>${jetty.version}</version>
    </dependency>
    <dependency>
-    <groupId>org.mortbay.jetty</groupId>
+    <groupId>org.eclipse.jetty</groupId>
     <artifactId>jetty-util</artifactId>
-    <version>6.1.8</version>
+    <version>${jetty.version}</version>
    </dependency>
    <dependency>
-    <groupId>org.mortbay.jetty</groupId>
+    <groupId>org.eclipse.jetty</groupId>
     <artifactId>jsp-2.0</artifactId>
-    <version>6.1.8</version>
+    <version>${jetty.version}</version>
     <type>pom</type>
    </dependency>
-   <dependency>
+  <dependency>
+    <groupId>org.eclipse.jetty</groupId>
+    <artifactId>jetty-servlets</artifactId>
+    <version>${jetty.version}</version>
+  </dependency>
+  <dependency>
     <groupId>tomcat</groupId>
     <artifactId>jasper-compiler-jdt</artifactId>
     <version>5.5.15</version>
@@ -909,7 +989,7 @@
    <dependency>
     <groupId>org.slf4j</groupId>
     <artifactId>jcl104-over-slf4j</artifactId>
-    <version>1.0.1</version>
+    <version>${slf4j.version}</version>
    </dependency>
    <dependency>
     <groupId>javax.media</groupId>
@@ -927,15 +1007,32 @@
     <version>1.1</version>
    </dependency>
    <dependency>
-    <groupId>org.eclipse.emf</groupId>
-    <artifactId>common</artifactId>
-    <version>2.6.0</version>
+    <groupId>it.geosolutions.jaiext.concurrent-tile-cache</groupId>
+    <artifactId>jt-concurrent-tile-cache</artifactId>
+    <version>${jaiext.version}</version>
    </dependency>
-   <dependency>
-    <groupId>org.eclipse.emf</groupId>
-    <artifactId>ecore</artifactId>
-    <version>2.6.1</version>
-   </dependency>
+         <!-- EMF -->
+
+      <dependency>
+	    <groupId>org.eclipse.emf</groupId>
+	    <artifactId>org.eclipse.emf.common</artifactId>
+	    <version>2.12.0</version>
+    </dependency>
+	<dependency>
+		<groupId>org.eclipse.emf</groupId>
+		<artifactId>org.eclipse.emf.ecore.xmi</artifactId>
+		<version>2.12.0</version>
+	</dependency>
+	<dependency>
+		<groupId>org.eclipse.emf</groupId>
+		<artifactId>org.eclipse.emf.ecore</artifactId>
+		<version>2.12.0</version>
+	</dependency>
+	<dependency>
+		<groupId>org.eclipse.xsd</groupId>
+		<artifactId>org.eclipse.xsd</artifactId>
+		<version>2.12.0</version>
+	</dependency>
    <dependency>
     <groupId>org.freemarker</groupId>
     <artifactId>freemarker</artifactId>
@@ -947,6 +1044,27 @@
      <version>2.2.3</version> 
      <classifier>jdk15</classifier>
    </dependency>
+   <dependency>
+     <groupId>org.codehaus.jackson</groupId>
+     <artifactId>jackson-mapper-asl</artifactId>
+     <version>${jackson1.version}</version>
+   </dependency>
+   <dependency>
+     <groupId>com.fasterxml.jackson.core</groupId>
+     <artifactId>jackson-core</artifactId>
+     <version>${jackson2.version}</version>
+   </dependency>
+   <dependency>
+     <groupId>com.fasterxml.jackson.core</groupId>
+     <artifactId>jackson-annotations</artifactId>
+     <version>${jackson2.version}</version>
+   </dependency>
+   <dependency>
+     <groupId>com.fasterxml.jackson.core</groupId>
+     <artifactId>jackson-databind</artifactId>
+     <version>${jackson2.version}</version>
+   </dependency>
+
    <dependency>
    <groupId>javax.mail</groupId>
      <artifactId>mail</artifactId>
@@ -967,7 +1085,18 @@
       <groupId>org.restlet</groupId>
       <artifactId>org.restlet</artifactId>
       <version>1.0.8</version>
+
+      <!-- Classifier selects a hacked JAR where we've removed a class we don't need and which has a security vulnerability.  This should be removed when we update to A current version of Restlet (2.2 or later)-->
+      <classifier>noobjrep</classifier> 
+
     </dependency>
+    <dependency>
+      <groupId>org.restlet</groupId>
+      <artifactId>org.restlet</artifactId>
+      <version>1.0.8</version>
+      <scope>provided</scope>
+    </dependency>
+
     <dependency>
       <groupId>org.restlet</groupId>
       <artifactId>org.restlet.ext.fileupload</artifactId>
@@ -996,7 +1125,7 @@
     <dependency>
       <groupId>com.thoughtworks.xstream</groupId>
       <artifactId>xstream</artifactId>
-      <version>1.4.7</version>
+      <version>1.4.10</version>
     </dependency>
     <dependency>
       <groupId>com.h2database</groupId>
@@ -1038,6 +1167,16 @@
       <artifactId>pngj</artifactId>
       <version>2.0.1</version>
     </dependency>
+    <dependency>
+      <groupId>xml-apis</groupId>
+      <artifactId>xml-apis</artifactId>
+      <version>1.4.01</version>
+    </dependency>
+        <dependency>
+            <groupId>xerces</groupId>
+            <artifactId>xercesImpl</artifactId>
+            <version>2.11.0</version>
+        </dependency>
 	<dependency>
 	  <groupId>javax.jms</groupId>
 	  <artifactId>jms-api</artifactId>
@@ -1062,7 +1201,56 @@
 		<artifactId>geoserver-manager</artifactId>
 		<version>1.5.1</version>
 		<scope>test</scope>
-	</dependency>	
+    </dependency>
+    <!-- Pinned transitive dependency of gs-gwc-s3 via gwc-aws-s3 via aws-java-sdk-core. -->
+    <!-- Other code should use Java 8 JSR 310 java.time instead of joda-time. -->
+    <dependency>
+      <groupId>joda-time</groupId>
+      <artifactId>joda-time</artifactId>
+      <version>${joda-time.version}</version> 
+    </dependency>
+    <dependency>
+      <groupId>it.geosolutions.imageio-ext</groupId>
+      <artifactId>imageio-ext-png</artifactId>
+      <version>${imageio-ext.version}</version>
+    </dependency>
+    <dependency>
+      <groupId>it.geosolutions.imageio-ext</groupId>
+      <artifactId>imageio-ext-turbojpeg</artifactId>
+      <version>${imageio-ext.version}</version>
+    </dependency>
+    <dependency>
+      <groupId>no.ecc.vectortile</groupId>
+      <artifactId>java-vector-tile</artifactId>
+      <version>1.0.9</version>
+    </dependency>
+    <dependency>
+      <groupId>com.ning</groupId>
+      <artifactId>compress-lzf</artifactId>
+      <version>${compress-lzf.version}</version>
+    </dependency>
+    <dependency>
+      <groupId>org.jsoup</groupId>
+      <artifactId>jsoup</artifactId>
+      <version>1.10.2</version>
+    </dependency>
+    <dependency>
+      <groupId>com.github.svenmeier.wicket-dnd</groupId>
+      <artifactId>wicket-dnd</artifactId>
+      <version>0.7.3</version>
+      <exclusions>
+        <!-- wicket-dnd depends on wicket 7.0, we use a more recent version -->
+        <exclusion>
+           <groupId>org.apache.wicket</groupId>
+           <artifactId>wicket-core</artifactId>
+        </exclusion>
+      </exclusions>
+    </dependency>
+    <dependency>
+      <groupId>org.marlin</groupId>
+      <artifactId>marlin</artifactId>
+      <version>${marlin.version}</version>
+    </dependency>
   </dependencies>
  </dependencyManagement>
 
@@ -1178,6 +1366,8 @@
      <include>**/*.tiff</include>
      <include>**/*.zip</include>
      <include>**/*.json</include>
+     <include>**/*.nc</include>
+     <include>**/*.grib2</include>
     </includes>
     <excludes>
      <exclude>**/doc-files/**</exclude>
@@ -1200,14 +1390,10 @@
      <artifactId>maven-compiler-plugin</artifactId>
      <version>2.3.2</version>
      <configuration>
-       <source>1.7</source>
-       <target>1.7</target>
+       <source>1.8</source>
+       <target>1.8</target>
        <debug>true</debug>
        <encoding>UTF-8</encoding>
-       <!-- 
-           On the win32 build box the compiler oom's due to the compiler accumulating
-           too many classes in the permanent generation, similar to GEOT-2462  
-       -->
        <fork>${fork.javac}</fork> 
        <maxmem>${javac.maxHeapSize}</maxmem>
      </configuration>
@@ -1229,8 +1415,8 @@
     <version>2.12.3</version>
     <configuration>
      <runOrder>alphabetical</runOrder>
-     <source>1.7</source>
-     <target>1.7</target>
+     <source>1.8</source>
+     <target>1.8</target>
      <includes>
       <include>**/*Test.java</include>
      </includes>
@@ -1238,7 +1424,7 @@
       <exclude>${test.exclude.pattern}</exclude>
      </excludes>
      <forkMode>once</forkMode>
-     <argLine>-Xmx${test.maxHeapSize} -XX:MaxPermSize=${test.maxPermSize} -enableassertions ${jvm.opts} -Djava.awt.headless=${java.awt.headless} -Dsun.java2d.d3d=${sun.java2d.d3d}-DremoteOwsTests=${remoteOwsTests} -DquietTests=${quietTests} -Dorg.geotools.image.test.enabled=${image.tests} -Dorg.geotools.image.test.interactive=${interactive.image} -Duser.timezone=${user.timezone}</argLine>
+     <argLine>-Xmx${test.maxHeapSize} -enableassertions ${jvm.opts} -Djava.awt.headless=${java.awt.headless} -Dsun.java2d.d3d=${sun.java2d.d3d} -DremoteOwsTests=${remoteOwsTests} -DquietTests=${quietTests} -Dorg.geotools.image.test.enabled=${image.tests} -Dorg.geotools.image.test.interactive=${interactive.image} -Duser.timezone=${user.timezone} -Dwindows.leniency=${windows.leniency} -XX:+TieredCompilation -XX:TieredStopAtLevel=1</argLine>
      <enableAssertions>true</enableAssertions>
      <printSummary>true</printSummary>
      <testFailureIgnore>${allow.test.failure.ignore}</testFailureIgnore>
@@ -1252,7 +1438,6 @@
     <version>2.1</version>
     <configuration>
      <descriptors>
-      <descriptor>release/src.xml</descriptor>
       <descriptor>release/war.xml</descriptor>
       <descriptor>release/javadoc.xml</descriptor>
       <descriptor>release/bin.xml</descriptor>
@@ -1268,13 +1453,14 @@
       <descriptor>release/ext-h2.xml</descriptor>
       <descriptor>release/ext-sqlserver.xml</descriptor>
       <descriptor>release/ext-imagemap.xml</descriptor>
-      <descriptor>release/ext-ogr.xml</descriptor>
+      <descriptor>release/ext-ogr-wfs.xml</descriptor>
+      <descriptor>release/ext-ogr-wps.xml</descriptor>
       <descriptor>release/ext-excel.xml</descriptor>
-      <descriptor>release/ext-geosearch.xml</descriptor>
       <descriptor>release/ext-charts.xml</descriptor>
       <descriptor>release/ext-app-schema.xml</descriptor>
       <descriptor>release/ext-control-flow.xml</descriptor>
       <descriptor>release/ext-wps.xml</descriptor>
+      <descriptor>release/ext-wps-hazelcast.xml</descriptor>
       <descriptor>release/ext-querylayer.xml</descriptor>
       <descriptor>release/ext-teradata.xml</descriptor>
       <descriptor>release/ext-cas.xml</descriptor>
@@ -1290,8 +1476,13 @@
       <descriptor>release/ext-libjpeg-turbo.xml</descriptor>
       <descriptor>release/ext-importer.xml</descriptor>
       <descriptor>release/ext-importer-bdb.xml</descriptor>
+      <descriptor>release/ext-grib.xml</descriptor>
+      <descriptor>release/ext-netcdf.xml</descriptor>
+      <descriptor>release/ext-netcdf-out.xml</descriptor>
+      <descriptor>release/ext-vectortiles.xml</descriptor>
+      <descriptor>release/ext-ysld.xml</descriptor>
      </descriptors>
-     <finalName>geoserver-2.7-SNAPSHOT</finalName>
+     <finalName>geoserver-2.12-SNAPSHOT</finalName>
      <outputDirectory>${project.build.directory}/release</outputDirectory>
     </configuration>
    </plugin>
@@ -1312,7 +1503,7 @@
    <!-- eclipse ide integration -->
    <plugin>
     <artifactId>maven-eclipse-plugin</artifactId>
-    <version>2.4</version>
+    <version>2.10</version>
     <configuration>
      <!--downloadSources>true</downloadSources-->
      <additionalProjectnatures>
@@ -1362,8 +1553,8 @@
      <execution>
       <id>attach-sources</id>
       <goals>
-       <goal>jar</goal>
-       <goal>test-jar</goal>
+       <goal>jar-no-fork</goal>
+       <goal>test-jar-no-fork</goal>
       </goals>
      </execution>
     </executions>
@@ -1373,7 +1564,7 @@
    <plugin>
      <groupId>pl.project13.maven</groupId>
      <artifactId>git-commit-id-plugin</artifactId>
-     <version>2.0.4</version>
+     <version>2.1.15</version>
      <executions>
        <execution>
          <goals>
@@ -1386,46 +1577,48 @@
        <failOnNoGitDirectory>false</failOnNoGitDirectory>
        <skipPoms>false</skipPoms>
        <verbose>false</verbose>
+       <injectAllReactorProjects>true</injectAllReactorProjects>
+       <runOnlyOnce>${git.commit.runOnlyOnce}</runOnlyOnce>
+       <!--
+       In order to use native git (3+ times faster) add the following in ~/.m2/settings.xml
+       <profiles>
+         <profile>
+           <id>gitNative</id>
+           <properties>
+             <git.commit.useNative>true</git.commit.useNative>
+           </properties>
+         </profile>
+       <profiles>
+       <activeProfiles>
+         <activeProfile>gitNative</activeProfile>
+       </activeProfiles>
+       -->
+       <useNativeGit>${git.commit.useNative}</useNativeGit>
      </configuration>
    </plugin>
 
-  </plugins>
-
-  <extensions>
-    <extension>
-      <groupId>org.apache.maven.wagon</groupId>
-      <artifactId>wagon-webdav</artifactId>
-      <version>1.0-beta-2</version>
-    </extension>
-  </extensions>
-
- </build>
-
- <reporting>
-  <plugins>
-
-   <!-- website -->
-   <plugin>
-    <artifactId>maven-site-plugin</artifactId>
-    <version>3.0</version>
-   </plugin>
-
-   <!-- ======================================================= -->
+<!-- ======================================================= -->
    <!--     Javadoc generation.                                 -->
    <!-- ======================================================= -->
    <plugin>
     <artifactId>maven-javadoc-plugin</artifactId>
-    <version>2.9</version>
+    <version>2.10.3</version>
     <configuration>
-     <source>1.7</source>
+     <source>1.8</source>
      <version>false</version>
      <noqualifier>all</noqualifier>
      <quiet>true</quiet>
      <maxmemory>256M</maxmemory>
      <encoding>UTF-8</encoding>
-     <additionalparam>-keywords</additionalparam>
+     
+     <additionalparam>-Xdoclint:none</additionalparam>
      <breakiterator>true</breakiterator>
      <tags>
+      <tag>
+       <name>generated</name>
+       <placement>tfmc</placement>
+       <head>GENERATED:</head>
+      </tag>
       <tag>
        <name>todo</name>
        <placement>tfmc</placement>
@@ -1454,18 +1647,97 @@
      </tags>
 
      <links>
-      <link>http://docs.oracle.com/javase/7/docs/api/</link>
+      <link>http://docs.oracle.com/javase/8/docs/api/</link>
       <link>http://docs.oracle.com/javaee/7/api/</link>
-      <link>http://download.java.net/media/jai/javadoc/1.1.3/jai-apidocs</link>
-      <link>http://download.java.net/media/jai-imageio/javadoc/1.0_01</link>
-      <link>http://download.java.net/media/java3d/javadoc/1.5.1</link>
       <link>http://jscience.org/api/</link>
       <link>http://tsusiatsoftware.net/jts/javadoc</link>
       <link>http://docs.geotools.org/latest/javadocs/</link>
       <link>http://xmlgraphics.apache.org/batik/javadoc</link>
-      <link>http://www.1t3xt.info/api/</link>
       <link>http://freemarker.sourceforge.net/docs/api/</link>
-      <link>http://wicket.apache.org/docs/wicket-1.3.2/wicket/apidocs</link>
+      <link>https://ci.apache.org/projects/wicket/apidocs/7.x/</link>
+     </links>
+    </configuration>
+   </plugin>
+
+  </plugins>
+
+  <extensions>
+    <extension>
+      <groupId>org.apache.maven.wagon</groupId>
+      <artifactId>wagon-webdav</artifactId>
+      <version>1.0-beta-2</version>
+    </extension>
+  </extensions>
+
+ </build>
+
+ <reporting>
+  <plugins>
+
+   <!-- website -->
+   <plugin>
+    <artifactId>maven-site-plugin</artifactId>
+    <version>3.0</version>
+   </plugin>
+
+   <!-- ======================================================= -->
+   <!--     Javadoc generation.                                 -->
+   <!-- ======================================================= -->
+   <plugin>
+    <artifactId>maven-javadoc-plugin</artifactId>
+    <version>2.10.3</version>
+    <configuration>
+     <source>1.8</source>
+     <version>false</version>
+     <noqualifier>all</noqualifier>
+     <quiet>true</quiet>
+     <maxmemory>256M</maxmemory>
+     <encoding>UTF-8</encoding>
+
+     <additionalparam>-Xdoclint:none</additionalparam>
+     <breakiterator>true</breakiterator>
+     <tags>
+      <tag>
+       <name>generated</name>
+       <placement>tfmc</placement>
+       <head>GENERATED:</head>
+      </tag>
+      <tag>
+       <name>todo</name>
+       <placement>tfmc</placement>
+       <head>TODO:</head>
+      </tag>
+      <tag>
+       <name>task</name>
+       <placement>tfmc</placement>
+       <head>TODO:</head>
+      </tag>
+      <tag>
+       <name>revisit</name>
+       <placement>tfmc</placement>
+       <head>TODO:</head>
+      </tag>
+      <tag>
+       <name>source</name>
+       <placement>Xt</placement>
+       <head>Source:</head>
+      </tag>
+      <tag>
+       <name>tutorial</name>
+       <placement>Xt</placement>
+       <head>Tutorial:</head>
+      </tag>
+     </tags>
+
+     <links>
+      <link>http://docs.oracle.com/javase/8/docs/api/</link>
+      <link>http://docs.oracle.com/javaee/7/api/</link>
+      <link>http://jscience.org/api/</link>
+      <link>http://tsusiatsoftware.net/jts/javadoc</link>
+      <link>http://docs.geotools.org/latest/javadocs/</link>
+      <link>http://xmlgraphics.apache.org/batik/javadoc</link>
+      <link>http://freemarker.sourceforge.net/docs/api/</link>
+      <link>https://ci.apache.org/projects/wicket/apidocs/7.x/</link>
      </links>
     </configuration>
    </plugin>
@@ -1528,15 +1800,15 @@
  <distributionManagement>
   <repository>
    <id>boundless</id>
-   <name>Boundless Maven Repository</name>
-   <url>http://repo.boundlessgeo.com/main</url>
+   <name>Boundless Release Repository</name>
+   <url>https://repo.boundlessgeo.com/release/</url>
    <uniqueVersion>false</uniqueVersion>
   </repository>
   <snapshotRepository>
    <id>boundless</id>
-   <name>Boundless Maven Repository</name>
-   <url>http://repo.boundlessgeo.com/main</url>
    <uniqueVersion>false</uniqueVersion>
+   <name>Boundless Snapshot Repository</name>
+   <url>https://repo.boundlessgeo.com/snapshot/</url>
   </snapshotRepository>
  </distributionManagement>
 
@@ -1558,24 +1830,28 @@
   <module>web</module>
   <module>community</module>
   <module>extension</module>
-</modules>
+ </modules>
 
  <properties>
-  <gs.version>2.7-SNAPSHOT</gs.version>
-  <gt.version>13-SNAPSHOT</gt.version>
-  <gwc.version>1.7-SNAPSHOT</gwc.version>
-  <spring.version>3.1.4.RELEASE</spring.version>
-  <spring.security.version>3.1.0.RELEASE</spring.security.version> 
-  <poi.version>3.8</poi.version>
-  <wicket.version>1.4.12</wicket.version>
+  <gs.version>2.12-SNAPSHOT</gs.version>
+  <gt.version>18-SNAPSHOT</gt.version>
+  <gwc.version>1.12-SNAPSHOT</gwc.version>
+  <spring.version>4.3.7.RELEASE</spring.version>
+  <spring.security.version>4.0.4.RELEASE</spring.security.version> 
+  <servlet-api.version>3.0.1</servlet-api.version>
+  <jetty.version>9.2.13.v20150730</jetty.version>
+  <jetty.servlet-api.version>3.1.0</jetty.servlet-api.version>
+  <poi.version>3.14</poi.version>
+  <wicket.version>7.6.0</wicket.version>
   <ant.version>1.8.4</ant.version>
-  <imageio-ext.version>1.1.10</imageio-ext.version>
+  <imageio-ext.version>1.1.17</imageio-ext.version>
+  <jaiext.version>1.0.15</jaiext.version>
   <java.awt.headless>true</java.awt.headless>
+  <sun.java2d.d3d>true</sun.java2d.d3d>
   <jvm.opts></jvm.opts>
   <jalopy.phase>disabled</jalopy.phase>
   <jalopy.srcExcludesPattern>disabled</jalopy.srcExcludesPattern>
   <test.maxHeapSize>512M</test.maxHeapSize>
-  <test.maxPermSize>128M</test.maxPermSize>
   <test.excludedGroups></test.excludedGroups>
   <test.exclude.pattern>none</test.exclude.pattern>
   <quietTests>true</quietTests>
@@ -1586,7 +1862,22 @@
   <fork.javac>true</fork.javac>
   <javac.maxHeapSize>256m</javac.maxHeapSize>
   <image.tests>true</image.tests>
-  <interactive.tests>false</interactive.tests>
+  <interactive.image>false</interactive.image>
+  <windows.leniency>true</windows.leniency>
+  <gf.version>3.2-SNAPSHOT</gf.version>
+  <hibernate-version>3.6.0.Final</hibernate-version>
+  <hibernate-generic-dao-version>1.1.0</hibernate-generic-dao-version>
+  <hibernate-spatial-version>1.1.1</hibernate-spatial-version>
+  <hibernate-spatial-h2-version>1.1.1</hibernate-spatial-h2-version>
+  <!-- NOTE: be careful if upgrading slf4j, check the netcdf and netcdf-out build correcly -->
+  <slf4j.version>1.6.4</slf4j.version>
+  <joda-time.version>2.8.1</joda-time.version>
+  <git.commit.useNative>false</git.commit.useNative>
+  <git.commit.runOnlyOnce>true</git.commit.runOnlyOnce>
+  <jackson1.version>1.9.13</jackson1.version>
+  <jackson2.version>2.5.0</jackson2.version>
+  <compress-lzf.version>1.0.3</compress-lzf.version>
+  <marlin.version>0.7.5-Unsafe</marlin.version>
  </properties>
 
  <profiles>

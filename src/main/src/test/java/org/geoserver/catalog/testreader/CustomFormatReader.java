@@ -1,4 +1,4 @@
-/* (c) 2014 Open Source Geospatial Foundation - all rights reserved
+/* (c) 2014-2015 Open Source Geospatial Foundation - all rights reserved
  * (c) 2001 - 2013 OpenPlans
  * This code is licensed under the GPL 2.0 license, available at the root
  * application directory.
@@ -12,6 +12,7 @@ import java.awt.image.RenderedImage;
 import java.awt.image.renderable.ParameterBlock;
 import java.io.File;
 import java.io.IOException;
+import java.nio.file.Files;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.HashMap;
@@ -33,6 +34,7 @@ import org.geotools.factory.Hints;
 import org.geotools.gce.geotiff.GeoTiffReader;
 import org.geotools.image.ImageWorker;
 import org.geotools.image.io.ImageIOExt;
+import org.geotools.resources.coverage.CoverageUtilities;
 import org.geotools.resources.i18n.Vocabulary;
 import org.geotools.resources.i18n.VocabularyKeys;
 import org.geotools.util.Converters;
@@ -51,14 +53,16 @@ public final class CustomFormatReader extends AbstractGridCoverage2DReader {
     private static final String MY_DIMENSION_DOMAIN =
             CustomFormat.CUSTOM_DIMENSION_NAME + "_DOMAIN";
     private static final String HAS_MY_DIMENSION_DOMAIN = "HAS_" + MY_DIMENSION_DOMAIN;
-    
+    private static final String MY_DIMENSION_DATATYPE = MY_DIMENSION_DOMAIN + "_DATATYPE";
+
     private static final TIFFImageReaderSpi READER_SPI = new TIFFImageReaderSpi();
-    
+
     private static final double DEFAULT_NODATA = 9999.0;
-    
+
     private final File dataDirectory;
-    
-    
+
+    private String clazz;
+
     public CustomFormatReader(Object source, Hints hints)
             throws IOException {
         super(source, hints);
@@ -143,6 +147,9 @@ public final class CustomFormatReader extends AbstractGridCoverage2DReader {
         if (MY_DIMENSION_DOMAIN.equalsIgnoreCase(name)) {
             return dimensionValueList();
         }
+        if (MY_DIMENSION_DATATYPE.equalsIgnoreCase(name) && clazz != null) {
+            return clazz;
+        }
         return null;
     }
     
@@ -187,8 +194,13 @@ public final class CustomFormatReader extends AbstractGridCoverage2DReader {
             throw new IOException("No data file found");
         }
         
+        File clazzFile = new File(dataDirectory, "clazz");
+        if (clazzFile.exists()) {
+            clazz = new String(Files.readAllBytes(clazzFile.toPath())).trim();
+        }
+
         final GeoTiffReader geotiffReader = new GeoTiffReader(dataFile, hints);
-        this.crs = geotiffReader.getCrs();
+        this.crs = geotiffReader.getCoordinateReferenceSystem();
         this.originalGridRange = geotiffReader.getOriginalGridRange();
         this.originalEnvelope = geotiffReader.getOriginalEnvelope();
     }
@@ -237,15 +249,13 @@ public final class CustomFormatReader extends AbstractGridCoverage2DReader {
         Category noDataCategory = new Category(
                 Vocabulary.formatInternational(VocabularyKeys.NODATA), 
                 new Color[] { new Color(0, 0, 0, 0) }, 
-                NumberRange.create(DEFAULT_NODATA, DEFAULT_NODATA), 
                 NumberRange.create(DEFAULT_NODATA, DEFAULT_NODATA));
         Category[] categories = new Category[] { noDataCategory };
         GridSampleDimension[] bands;
         bands = new GridSampleDimension[1];
-        bands[0] = 
-            new GridSampleDimension(null, categories, null).geophysics(true);
-        final Map<String, Double> properties = new HashMap<String, Double>();
-        properties.put("GC_NODATA", DEFAULT_NODATA);
+        bands[0] = new GridSampleDimension(null, categories, null);
+        final Map<String, Object> properties = new HashMap<String, Object>();
+        CoverageUtilities.setNoDataProperty(properties, DEFAULT_NODATA);
         return this.coverageFactory.create(name, image, this.originalEnvelope,
                                            bands, null, properties);
     }

@@ -1,4 +1,4 @@
-/* (c) 2014 Open Source Geospatial Foundation - all rights reserved
+/* (c) 2014 - 2016 Open Source Geospatial Foundation - all rights reserved
  * (c) 2001 - 2013 OpenPlans
  * This code is licensed under the GPL 2.0 license, available at the root
  * application directory.
@@ -10,6 +10,7 @@ import org.geoserver.catalog.FeatureTypeInfo;
 import org.geoserver.catalog.LayerInfo;
 import org.geoserver.catalog.ResourceInfo;
 import org.geoserver.catalog.WMSLayerInfo;
+import org.geoserver.catalog.WMTSLayerInfo;
 import org.geoserver.security.SecureCatalogImpl;
 import org.geoserver.security.WrapperPolicy;
 
@@ -37,6 +38,8 @@ public class SecuredLayerInfo extends DecoratingLayerInfo {
             return new SecuredCoverageInfo((CoverageInfo) r, policy);
         else if (r instanceof WMSLayerInfo)
             return new SecuredWMSLayerInfo((WMSLayerInfo) r, policy);
+        else if (r instanceof WMTSLayerInfo)
+            return new SecuredWMTSLayerInfo((WMTSLayerInfo) r, policy);
         else
             throw new RuntimeException("Don't know how to make resource of type " + r.getClass());
     }
@@ -44,7 +47,10 @@ public class SecuredLayerInfo extends DecoratingLayerInfo {
 
     @Override
     public void setResource(ResourceInfo resource) {
-        if (resource instanceof SecuredFeatureTypeInfo || resource instanceof SecuredCoverageInfo) {
+        if (resource instanceof SecuredFeatureTypeInfo
+                || resource instanceof SecuredCoverageInfo
+                || resource instanceof SecuredWMSLayerInfo
+                || resource instanceof SecuredWMTSLayerInfo) {
             resource = (ResourceInfo) SecureCatalogImpl.unwrap(resource);
         }
 

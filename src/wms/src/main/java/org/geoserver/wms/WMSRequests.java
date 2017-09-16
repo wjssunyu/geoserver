@@ -1,4 +1,4 @@
-/* (c) 2014 Open Source Geospatial Foundation - all rights reserved
+/* (c) 2014 - 2017 Open Source Geospatial Foundation - all rights reserved
  * (c) 2001 - 2013 OpenPlans
  * This code is licensed under the GPL 2.0 license, available at the root
  * application directory.
@@ -206,7 +206,7 @@ public class WMSRequests {
      * 
      * @param req
      *            The wms request.
-     * @param layer
+     * @param published
      *            The Map layer, may not be <code>null</code>.
      * @param kvp
      *            Additional or overidding kvp parameters, may be <code>null</code>
@@ -356,6 +356,9 @@ public class WMSRequests {
               // semantics of feature id slightly different, replicate entire value
               params.put("elevation", req.getRawKvp().get("elevation"));
             }
+            req.getRawKvp().entrySet().stream()
+                .filter(e -> e.getKey().toLowerCase().startsWith("dim_"))
+                .forEach(e -> params.put(e.getKey().toLowerCase(), e.getValue()));
 
         } else {
             // include all
@@ -490,12 +493,10 @@ public class WMSRequests {
     /**
      * Encodes a map of formation options to be used as the value in a kvp.
      * 
+     * A string of the form 'key1:value1,value2;key2:value1;...', or the empty string if the
+     *         formatOptions map is empty.
      * @param formatOptions The map of formation options.
      * @param sb StringBuffer to append to.
-     * 
-     * @return A string of the form 'key1:value1,value2;key2:value1;...', or the empty string if the
-     *         formatOptions map is empty.
-     * 
      */
     public static void encodeFormatOptions(Map formatOptions, StringBuffer sb) {
         if (formatOptions == null || formatOptions.isEmpty()) {

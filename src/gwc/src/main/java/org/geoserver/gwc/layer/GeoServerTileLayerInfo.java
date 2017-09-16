@@ -9,6 +9,9 @@ import java.io.Serializable;
 import java.util.List;
 import java.util.Set;
 
+import javax.annotation.Nullable;
+
+import org.geowebcache.config.BlobStoreConfig;
 import org.geowebcache.config.XMLGridSubset;
 import org.geowebcache.filter.parameters.ParameterFilter;
 import org.geowebcache.layer.ExpirationRule;
@@ -24,6 +27,19 @@ public interface GeoServerTileLayerInfo extends Serializable, Cloneable {
     public abstract String getName();
 
     public abstract void setName(String name);
+
+    /**
+     * @return The {@link BlobStoreConfig#getId() blob store id} for this layer's tiles, or
+     *         {@code null} if whatever the default blob store is shall be used
+     */
+    @Nullable
+    public abstract String getBlobStoreId();
+
+    /**
+     * @param blobStoreId the {@link BlobStoreConfig#getId() blob store id} for this layer's tiles,
+     *        or {@code null} if whatever the default blob store is shall be used
+     */
+    public abstract void setBlobStoreId(@Nullable String blobStoreId);
 
     public abstract int getMetaTilingX();
 
@@ -105,8 +121,12 @@ public interface GeoServerTileLayerInfo extends Serializable, Cloneable {
     /**
      * Get the ParameterFilter with the specified key
      * @param key
-     * @return
+     *
      */
     public abstract ParameterFilter getParameterFilter(String key);
+
+    public abstract boolean isInMemoryCached();
+    
+    public abstract void setInMemoryCached(boolean inMemoryCached);
 
 }

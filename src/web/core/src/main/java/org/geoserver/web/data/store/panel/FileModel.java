@@ -1,4 +1,4 @@
-/* (c) 2014 Open Source Geospatial Foundation - all rights reserved
+/* (c) 2014 - 2016 Open Source Geospatial Foundation - all rights reserved
  * (c) 2001 - 2013 OpenPlans
  * This code is licensed under the GPL 2.0 license, available at the root
  * application directory.
@@ -7,6 +7,7 @@ package org.geoserver.web.data.store.panel;
 
 import java.io.File;
 import java.io.IOException;
+import java.net.URL;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 
@@ -23,17 +24,19 @@ import org.geotools.util.logging.Logging;
  * @author Andrea Aime - GeoSolutions
  *
  */
-public class FileModel implements IModel {
+public class FileModel implements IModel<String> {
+    private static final long serialVersionUID = 3911203737278340528L;
+
     static final Logger LOGGER = Logging.getLogger(FileModel.class);
     
-    IModel delegate;
+    IModel<String> delegate;
     File rootDir;
     
-    public FileModel(IModel delegate) {
+    public FileModel(IModel<String> delegate) {
         this(delegate, GeoServerExtensions.bean(GeoServerResourceLoader.class).getBaseDirectory());
     }
 
-    public FileModel(IModel delegate, File rootDir) {
+    public FileModel(IModel<String> delegate, File rootDir) {
         this.delegate = delegate;
         this.rootDir = rootDir;
     }
@@ -48,8 +51,14 @@ public class FileModel implements IModel {
         return isSubfile(root, selection.getParentFile());
     }
 
-    public Object getObject() {
-        return delegate.getObject();
+    @Override
+    public String getObject() {
+        Object obj = delegate.getObject();
+        if (obj instanceof URL) {
+            URL url = (URL)obj;
+            return url.toExternalForm();
+        }
+        return (String)obj;
     }
 
     public void detach() {
@@ -57,8 +66,7 @@ public class FileModel implements IModel {
         
     }
 
-    public void setObject(Object object) {
-        String location = (String) object;
+    public void setObject(String location) {
         
         if(location != null) {
             File dataDirectory = canonicalize(rootDir);
@@ -93,7 +101,7 @@ public class FileModel implements IModel {
     /**
      * Turns a file in canonical form if possible
      * @param file
-     * @return
+     *
      */
     File canonicalize(File file) {
         try {

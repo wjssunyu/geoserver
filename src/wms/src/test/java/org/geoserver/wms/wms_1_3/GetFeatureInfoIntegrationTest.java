@@ -1,11 +1,9 @@
-/* (c) 2014 Open Source Geospatial Foundation - all rights reserved
+/* (c) 2014 - 2017 Open Source Geospatial Foundation - all rights reserved
  * (c) 2001 - 2014 OpenPlans
  * This code is licensed under the GPL 2.0 license, available at the root
  * application directory.
  */
 package org.geoserver.wms.wms_1_3;
-
-import static org.junit.Assert.*;
 
 import java.io.File;
 import java.util.Collections;
@@ -22,6 +20,8 @@ import org.custommonkey.xmlunit.NamespaceContext;
 import org.custommonkey.xmlunit.SimpleNamespaceContext;
 import org.custommonkey.xmlunit.XMLAssert;
 import org.custommonkey.xmlunit.XMLUnit;
+import org.custommonkey.xmlunit.XpathEngine;
+import org.eclipse.xsd.XSDSchema;
 import org.geoserver.catalog.Catalog;
 import org.geoserver.catalog.LayerInfo;
 import org.geoserver.data.test.MockData;
@@ -30,11 +30,19 @@ import org.geoserver.data.test.SystemTestData.LayerProperty;
 import org.geoserver.wms.WMS;
 import org.geoserver.wms.WMSInfo;
 import org.geoserver.wms.WMSTestSupport;
-import org.geoserver.wms.featureinfo.*;
+import org.geoserver.wms.featureinfo.GML3FeatureInfoOutputFormat;
+import org.geoserver.wms.featureinfo.GetFeatureInfoKvpReader;
+import org.geoserver.wms.featureinfo.GetFeatureInfoOutputFormat;
+import org.geoserver.wms.featureinfo.TextFeatureInfoOutputFormat;
+import org.geoserver.wms.featureinfo.XML311FeatureInfoOutputFormat;
 import org.geoserver.wms.wms_1_1_1.CapabilitiesTest;
+import org.geotools.filter.v1_1.OGC;
 import org.geotools.util.logging.Logging;
 import org.junit.Test;
 import org.w3c.dom.Document;
+
+import static org.hamcrest.CoreMatchers.is;
+import static org.junit.Assert.*;
 
 /**
  * A GetFeatureInfo 1.3.0 integration test suite covering both spec mandates and geoserver specific
@@ -50,6 +58,12 @@ public class GetFeatureInfoIntegrationTest extends WMSTestSupport {
 
     public static QName SQUARES = new QName(MockData.CITE_URI, "squares", MockData.CITE_PREFIX);
 
+    public static QName SAMPLEGRIB = new QName(WCS_URI, "sampleGrib", WCS_PREFIX);
+
+    public static QName GENERIC_LINES = new QName(MockData.DEFAULT_URI, "genericLines", MockData.DEFAULT_PREFIX);
+
+    public static QName STATES = new QName(MockData.SF_URI, "states", MockData.SF_PREFIX);
+
     @Override
     protected void setUpTestData(SystemTestData testData) throws Exception {
         super.setUpTestData(testData);
@@ -59,7 +73,7 @@ public class GetFeatureInfoIntegrationTest extends WMSTestSupport {
     @Override
     protected void onSetUp(SystemTestData testData) throws Exception {
         super.onSetUp(testData);
-        
+
         Map<String, String> namespaces = new HashMap<String, String>();
         namespaces.put("xlink", "http://www.w3.org/1999/xlink");
         namespaces.put("xsi", "http://www.w3.org/2001/XMLSchema-instance");
@@ -91,6 +105,19 @@ public class GetFeatureInfoIntegrationTest extends WMSTestSupport {
         propertyMap.put(LayerProperty.STYLE,"raster");
         testData.addRasterLayer(TASMANIA_BM, "tazbm.tiff","tiff",propertyMap,
                 SystemTestData.class,catalog);
+        testData.addRasterLayer(SAMPLEGRIB, "sampleGrib.tif", null, propertyMap,
+                GetFeatureInfoIntegrationTest.class, catalog);
+
+        // this data set contain lines strings but with geometry type set as geometry
+        testData.addVectorLayer(GENERIC_LINES, Collections.emptyMap(), "genericLines.properties", getClass(), getCatalog());
+        testData.addStyle("genericLinesStyle", "genericLines.sld", getClass(), getCatalog());
+
+        // set up a non-querable layer.
+        testData.addStyle("Population", "Population.sld", CapabilitiesTest.class, catalog);
+        testData.addVectorLayer(STATES, Collections.emptyMap(), "states.properties", CapabilitiesTest.class, catalog);
+        LayerInfo layer = catalog.getLayerByName(getLayerId(STATES));
+        layer.setQueryable(false);
+        catalog.save(layer);
     }
     
 //    @Override
@@ -182,7 +209,6 @@ public class GetFeatureInfoIntegrationTest extends WMSTestSupport {
      * As for section 7.4.3.7, a missing or incorrectly specified pair of I,J parameters shall issue
      * a service exception with {@code InvalidPoint} code.
      * 
-     * @throws Exception
      */
     @Test
     public void testInvalidPoint() throws Exception {
@@ -207,7 +233,6 @@ public class GetFeatureInfoIntegrationTest extends WMSTestSupport {
     /**
      * Tests a simple GetFeatureInfo works, and that the result contains the expected polygon
      * 
-     * @throws Exception
      */
     @Test
     public void testSimple() throws Exception {
@@ -297,7 +322,6 @@ public class GetFeatureInfoIntegrationTest extends WMSTestSupport {
     /**
      * Tests a simple GetFeatureInfo works, and that the result contains the expected polygon
      * 
-     * @throws Exception
      */
     @Test
     public void testSimpleHtml() throws Exception {
@@ -315,7 +339,6 @@ public class GetFeatureInfoIntegrationTest extends WMSTestSupport {
      * Tests GetFeatureInfo with a buffer specified works, and that the result contains the expected
      * polygon
      * 
-     * @throws Exception
      */
     @Test
     public void testBuffer() throws Exception {
@@ -350,7 +373,6 @@ public class GetFeatureInfoIntegrationTest extends WMSTestSupport {
      * Tests GetFeatureInfo with a buffer specified works, and that the result contains the expected
      * polygon
      * 
-     * @throws Exception
      */
     @Test
     public void testAutoBuffer() throws Exception {
@@ -374,7 +396,6 @@ public class GetFeatureInfoIntegrationTest extends WMSTestSupport {
      * Tests GetFeatureInfo with a buffer specified works, and that the result contains the expected
      * polygon
      * 
-     * @throws Exception
      */
     @Test
     public void testBufferScales() throws Exception {
@@ -422,7 +443,6 @@ public class GetFeatureInfoIntegrationTest extends WMSTestSupport {
     /**
      * Tests a GetFeatureInfo againworks, and that the result contains the expected polygon
      * 
-     * @throws Exception
      */
     @Test
     public void testTwoLayers() throws Exception {
@@ -440,9 +460,8 @@ public class GetFeatureInfoIntegrationTest extends WMSTestSupport {
 
     /**
      * Check GetFeatureInfo returns an error if the format is not known, instead of returning the
-     * text format as in http://jira.codehaus.org/browse/GEOS-1924
+     * text format as in https://osgeo-org.atlassian.net/browse/GEOS-1924
      * 
-     * @throws Exception
      */
     @Test
     public void testUknownFormat() throws Exception {
@@ -461,7 +480,7 @@ public class GetFeatureInfoIntegrationTest extends WMSTestSupport {
 
     @Test
     public void testCoverage() throws Exception {
-        // http://jira.codehaus.org/browse/GEOS-2574
+        // https://osgeo-org.atlassian.net/browse/GEOS-2574
         String layer = getLayerId(TASMANIA_BM);
         String request = "wms?version=1.3.0&service=wms&request=GetFeatureInfo" + "&layers="
                 + layer + "&styles=&bbox=-44.5,146.5,-43,148&width=600&height=600"
@@ -478,7 +497,7 @@ public class GetFeatureInfoIntegrationTest extends WMSTestSupport {
 
     @Test
     public void testCoverageGML() throws Exception {
-        // http://jira.codehaus.org/browse/GEOS-3996
+        // https://osgeo-org.atlassian.net/browse/GEOS-3996
         String layer = getLayerId(TASMANIA_BM);
         String request = "wms?version=1.3.0&service=wms&request=GetFeatureInfo" + "&layers="
                 + layer + "&styles=&bbox=-44.5,146.5,-43,148&width=600&height=600"
@@ -497,7 +516,7 @@ public class GetFeatureInfoIntegrationTest extends WMSTestSupport {
     
     @Test
     public void testCoverageGML31() throws Exception {
-        // http://jira.codehaus.org/browse/GEOS-3996
+        // https://osgeo-org.atlassian.net/browse/GEOS-3996
         String layer = getLayerId(TASMANIA_BM);
         String request = "wms?version=1.3.0&service=wms&request=GetFeatureInfo" + "&layers="
                 + layer + "&styles=&bbox=-44.5,146.5,-43,148&width=600&height=600"
@@ -506,6 +525,44 @@ public class GetFeatureInfoIntegrationTest extends WMSTestSupport {
         Document dom = getAsDOM(request);
         print(dom);
 
+        XMLAssert.assertXpathEvaluatesTo("26.0",
+                "//wfs:FeatureCollection/gml:featureMembers/wcs:BlueMarble/wcs:RED_BAND", dom);
+        XMLAssert.assertXpathEvaluatesTo("70.0",
+                "//wfs:FeatureCollection/gml:featureMembers/wcs:BlueMarble/wcs:GREEN_BAND", dom);
+        XMLAssert.assertXpathEvaluatesTo("126.0",
+                "//wfs:FeatureCollection/gml:featureMembers/wcs:BlueMarble/wcs:BLUE_BAND", dom);
+    }
+
+    /**
+     * Test that a GetFeatureInfo request shifted plus 360 degrees east has the same results.
+     */
+    @Test
+    public void testCoverageGML31Plus360() throws Exception {
+        String layer = getLayerId(TASMANIA_BM);
+        String request = "wms?version=1.3.0&service=wms&request=GetFeatureInfo" + "&layers=" + layer
+                + "&styles=&bbox=-44.5,506.5,-43,508&width=600&height=600" + "&info_format="
+                + GML3FeatureInfoOutputFormat.FORMAT + "&query_layers=" + layer
+                + "&i=300&j=300&srs=EPSG:4326";
+        Document dom = getAsDOM(request);
+        XMLAssert.assertXpathEvaluatesTo("26.0",
+                "//wfs:FeatureCollection/gml:featureMembers/wcs:BlueMarble/wcs:RED_BAND", dom);
+        XMLAssert.assertXpathEvaluatesTo("70.0",
+                "//wfs:FeatureCollection/gml:featureMembers/wcs:BlueMarble/wcs:GREEN_BAND", dom);
+        XMLAssert.assertXpathEvaluatesTo("126.0",
+                "//wfs:FeatureCollection/gml:featureMembers/wcs:BlueMarble/wcs:BLUE_BAND", dom);
+    }
+
+    /**
+     * Test that a GetFeatureInfo request shifted minus 360 degrees east has the same results.
+     */
+    @Test
+    public void testCoverageGML31Minus360() throws Exception {
+        String layer = getLayerId(TASMANIA_BM);
+        String request = "wms?version=1.3.0&service=wms&request=GetFeatureInfo" + "&layers=" + layer
+                + "&styles=&bbox=-44.5,-213.5,-43,-212&width=600&height=600" + "&info_format="
+                + GML3FeatureInfoOutputFormat.FORMAT + "&query_layers=" + layer
+                + "&i=300&j=300&srs=EPSG:4326";
+        Document dom = getAsDOM(request);
         XMLAssert.assertXpathEvaluatesTo("26.0",
                 "//wfs:FeatureCollection/gml:featureMembers/wcs:BlueMarble/wcs:RED_BAND", dom);
         XMLAssert.assertXpathEvaluatesTo("70.0",
@@ -553,7 +610,6 @@ public class GetFeatureInfoIntegrationTest extends WMSTestSupport {
     /**
      * Check we report back an exception when query_layer contains layers not part of LAYERS
      * 
-     * @throws Exception
      */
     @Test
     public void testUnknownQueryLayer() throws Exception {
@@ -701,5 +757,160 @@ public class GetFeatureInfoIntegrationTest extends WMSTestSupport {
         assertEquals(red, Double.parseDouble(m.group(1)),0.0000001);
         assertEquals(green, Double.parseDouble(m.group(2)),0.0000001);
         assertEquals(blue, Double.parseDouble(m.group(3)),0.0000001);
+    }
+
+    /**
+     * Test GetFeatureInfo for a coverage with longitudes greater than 300 degrees east.
+     */
+    @Test
+    public void testSampleGrib() throws Exception {
+        String layer = getLayerId(SAMPLEGRIB);
+        String request = "wms?service=WMS&version=1.3.0&request=GetFeatureInfo&styles=&layers="
+                + layer + "&query_layers=" + layer + "&info_format="
+                + GML3FeatureInfoOutputFormat.FORMAT + "&width=300&height=400&i=150&j=100"
+                + "&crs=EPSG:4326&bbox=2,302,10,308";
+        Document dom = getAsDOM(request);
+        print(dom);
+        XMLAssert.assertXpathEvaluatesTo("-0.095",
+                "substring(//wfs:FeatureCollection/gml:featureMembers/wcs:sampleGrib/wcs:GRAY_INDEX,1,6)",
+                dom);
+    }
+
+    /**
+     * Test GetFeatureInfo for a coverage with longitudes greater than 300 degrees east, with a request shifted 360 degrees west.
+     */
+    @Test
+    public void testSampleGribWest() throws Exception {
+        String layer = getLayerId(SAMPLEGRIB);
+        String request = "wms?service=WMS&version=1.3.0&request=GetFeatureInfo&styles=&layers="
+                + layer + "&query_layers=" + layer + "&info_format="
+                + GML3FeatureInfoOutputFormat.FORMAT + "&width=300&height=400&i=150&j=100"
+                + "&crs=EPSG:4326&bbox=2,-58,10,-52";
+        Document dom = getAsDOM(request);
+        XMLAssert.assertXpathEvaluatesTo("-0.095",
+                "substring(//wfs:FeatureCollection/gml:featureMembers/wcs:sampleGrib/wcs:GRAY_INDEX,1,6)",
+                dom);
+    }
+
+    /**
+     * Test GetFeatureInfo for a coverage with longitudes greater than 300 degrees east, with a request shifted 360 degrees west, using the Web
+     * Mercator projection.
+     */
+    @Test
+    public void testSampleGribWebMercator() throws Exception {
+        String layer = getLayerId(SAMPLEGRIB);
+        String request = "wms?service=WMS&version=1.3.0&request=GetFeatureInfo&styles=&layers="
+                + layer + "&query_layers=" + layer + "&info_format="
+                + GML3FeatureInfoOutputFormat.FORMAT + "&width=300&height=400&i=150&j=100"
+                + "&crs=EPSG:3857"
+                + "&bbox=-6456530.466009867,222684.20850554455,-5788613.521250226,1118889.9748579597";
+        Document dom = getAsDOM(request);
+        XMLAssert.assertXpathEvaluatesTo("-0.095",
+                "substring(//wfs:FeatureCollection/gml:featureMembers/wcs:sampleGrib/wcs:GRAY_INDEX,1,6)",
+                dom);
+    }
+
+    /**
+     * Test GetFeatureInfo operation with lines styled with a line symbolizer. GenericLines layer
+     * geometry type is not defined so this use case will force the styles rendering machinery to
+     * deal with a generic geometry.
+     */
+    @Test
+    public void testGetFeatureInfoOnLineStringsWithGenericGeometry() throws Exception {
+        // perform the get feature info request
+        String layer = getLayerId(GENERIC_LINES);
+        String request = "wms?" +
+                "SERVICE=WMS" +
+                "&VERSION=1.1.1" +
+                "&REQUEST=GetFeatureInfo" +
+                "&FORMAT=image/png" +
+                "&TRANSPARENT=true" +
+                "&STYLES=genericLinesStyle" +
+                "&WIDTH=101" +
+                "&HEIGHT=101" +
+                "&BBOX=0.72235107421875,-1.26617431640625,1.27716064453125,-0.71136474609375" +
+                "&SRS=EPSG:4326" +
+                "&FEATURE_COUNT=50" +
+                "&X=50" +
+                "&Y=50" +
+                "&QUERY_LAYERS=" + layer +
+                "&LAYERS=" + layer +
+                "&INFO_FORMAT=text/xml" +
+                "&PROPERTYNAME=name";
+        Document result = getAsDOM(request, true);
+        // xpath engine that will be used to check XML content
+        Map<String, String> namespaces = new HashMap<>();
+        namespaces.put("xlink", "http://www.w3.org/1999/xlink");
+        namespaces.put("xsi", "http://www.w3.org/2001/XMLSchema-instance");
+        namespaces.put("gml", "http://www.opengis.net/gml");
+        namespaces.put("wfs", "http://www.opengis.net/wfs");
+        namespaces.put("gs", "http://geoserver.org");
+        XpathEngine xpath = XMLUnit.newXpathEngine();
+        xpath.setNamespaceContext(new SimpleNamespaceContext(namespaces));
+        // let's check the XML response content
+        assertThat(xpath.evaluate("boolean(//wfs:FeatureCollection/gml:featureMember/gs:genericLines[@fid='line.2'][gs:name='line2'])", result), is("true"));
+        assertThat(xpath.evaluate("boolean(//wfs:FeatureCollection/gml:featureMember/gs:genericLines[@fid='line.3'][gs:name='line3'])", result), is("true"));
+    }
+    
+    @Test
+    public void testSchemaLeak() throws Exception {
+        String layer = getLayerId(MockData.FORESTS);
+        String request = "wms?version=1.3.0&bbox=-0.002,-0.002,0.002,0.002&styles=&format=jpeg&info_format=" + GML3FeatureInfoOutputFormat.FORMAT + "&request=GetFeatureInfo&layers="
+                + layer + "&query_layers=" + layer + "&width=20&height=20&i=10&j=10";
+        // prime system, make sure everything is wired
+        getAsDOM(request);
+
+        // count how many imports in the OGC filter schema
+        XSDSchema schema = OGC.getInstance().getSchema();
+        int expectedImportCounts = schema.getReferencingDirectives().size();
+
+        // now check how many there are after anothe request, should not go up
+        getAsDOM(request);
+        int actualImportCounts = schema.getReferencingDirectives().size();
+        assertEquals(expectedImportCounts, actualImportCounts);
+    }
+
+    @Test
+    public void testQueryableAndNonQueryableLayersWithStyles() throws Exception {
+        String states = getLayerId(STATES);
+        String forests = getLayerId(MockData.FORESTS);
+        String request = "wms?version=1.3.0&bbox=-0.002,-0.002,0.002,0.002&format=jpeg" +
+            "&info_format=text/plain&request=GetFeatureInfo&width=20&height=20&i=10&j=10" +
+            "&layers=" + states + "," + forests + "&query_layers=" + states + "," + forests +
+            "&styles=Population,Forests";
+        String result = getAsString(request);
+        // System.out.println(result);
+        assertNotNull(result);
+        assertTrue(result.indexOf("Green Forest") > 0);
+    }
+
+    @Test
+    public void testQueryableAndNonQueryableLayersWithCqlFilter() throws Exception {
+        String states = getLayerId(STATES);
+        String forests = getLayerId(MockData.FORESTS);
+        String request = "wms?version=1.3.0&bbox=-0.002,-0.002,0.002,0.002&format=jpeg" +
+            "&info_format=text/plain&request=GetFeatureInfo&width=20&height=20&i=10&j=10" +
+            "&layers=" + states + "," + forests + "&query_layers=" + states + "," + forests +
+            "&styles=&cql_filter=PERSONS>25000000;NAME='Green Forest'";
+        String result = getAsString(request);
+        // System.out.println(result);
+        assertNotNull(result);
+        assertTrue(result.indexOf("Green Forest") > 0);
+    }
+
+    @Test
+    public void testQueryableAndNonQueryableLayersWithFilter() throws Exception {
+        String states = getLayerId(STATES);
+        String forests = getLayerId(MockData.FORESTS);
+        String request = "wms?version=1.3.0&bbox=-0.002,-0.002,0.002,0.002&format=jpeg" +
+            "&info_format=text/plain&request=GetFeatureInfo&width=20&height=20&i=10&j=10" +
+            "&layers=" + states + "," + forests + "&query_layers=" + states + "," + forests +
+            "&styles=&filter=" +
+            "(%3CFilter%3E%3CPropertyIsGreaterThan%3E%3CPropertyName%3EPERSONS%3C/PropertyName%3E%3CLiteral%3E25000000%3C/Literal%3E%3C/PropertyIsGreaterThan%3E%3C/Filter%3E)" +
+            "(%3CFilter%3E%3CPropertyIsEqualTo%3E%3CPropertyName%3ENAME%3C/PropertyName%3E%3CLiteral%3EGreen%20Forest%3C/Literal%3E%3C/PropertyIsEqualTo%3E%3C/Filter%3E)";
+        String result = getAsString(request);
+        // System.out.println(result);
+        assertNotNull(result);
+        assertTrue(result.indexOf("Green Forest") > 0);
     }
 }

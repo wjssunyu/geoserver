@@ -1,32 +1,41 @@
-/* (c) 2014 Open Source Geospatial Foundation - all rights reserved
+/* (c) 2014 - 2016 Open Source Geospatial Foundation - all rights reserved
  * (c) 2001 - 2013 OpenPlans
  * This code is licensed under the GPL 2.0 license, available at the root
  * application directory.
  */
 package org.geoserver.wms.wms_1_1_1;
 
-import static org.junit.Assert.*;
+import static org.hamcrest.CoreMatchers.containsString;
+import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertThat;
+import static org.junit.Assert.assertTrue;
 
 import java.awt.Color;
 import java.awt.Graphics2D;
-import java.awt.Transparency;
 import java.awt.image.BufferedImage;
 import java.awt.image.ColorModel;
-import java.awt.image.IndexColorModel;
 import java.io.ByteArrayInputStream;
-import java.io.File;
 
 import javax.imageio.ImageIO;
 import javax.imageio.ImageReader;
 import javax.imageio.stream.ImageInputStream;
 
+import org.custommonkey.xmlunit.XMLAssert;
+import org.custommonkey.xmlunit.XMLUnit;
+import org.custommonkey.xmlunit.XpathEngine;
+import org.geoserver.catalog.DimensionDefaultValueSetting;
+import org.geoserver.catalog.DimensionDefaultValueSetting.Strategy;
+import org.geoserver.platform.ServiceException;
+import org.geoserver.test.SystemTest;
 import org.geoserver.catalog.DimensionPresentation;
 import org.geoserver.catalog.ResourceInfo;
+import org.geoserver.data.test.SystemTestData;
 import org.geoserver.wms.WMSDimensionsTestSupport;
 import org.geoserver.wms.map.GIFMapResponse;
 import org.junit.Test;
 
-import com.mockrunner.mock.web.MockHttpServletResponse;
+import org.springframework.mock.web.MockHttpServletResponse;
+import org.w3c.dom.Document;
 
 public class DimensionsVectorGetMapTest extends WMSDimensionsTestSupport {
 
@@ -368,5 +377,116 @@ public class DimensionsVectorGetMapTest extends WMSDimensionsTestSupport {
         assertPixel(image, 20, 30, Color.BLACK);
         assertPixel(image, 60, 30, Color.WHITE);
     }
+    
+    @Test 
+    public void testElevationDefaultAsRange() throws Exception {
+        // setup a default 
+        DimensionDefaultValueSetting defaultValueSetting = new DimensionDefaultValueSetting();
+        defaultValueSetting.setStrategyType(Strategy.FIXED);
+        defaultValueSetting.setReferenceValue("1/3");
+        setupResourceDimensionDefaultValue(V_TIME_ELEVATION, ResourceInfo.ELEVATION, defaultValueSetting, "elevation");
+        
+        // request with default values
+        BufferedImage image = getAsImage("wms?service=WMS&version=1.1.1&request=GetMap"
+                + "&bbox=-180,-90,180,90&styles=&Format=image/png&width=80&height=40&srs=EPSG:4326"
+                + "&layers=" + getLayerId(V_TIME_ELEVATION), "image/png");
+        
+        // RenderedImageBrowser.showChain(image);
 
+        // the last three show up, the first does not
+        assertPixel(image, 20, 10, Color.WHITE);
+        assertPixel(image, 60, 10, Color.BLACK);
+        assertPixel(image, 20, 30, Color.BLACK);
+        assertPixel(image, 60, 30, Color.BLACK);
+    }
+
+    
+    @Test 
+    public void testTimeDefaultAsRange() throws Exception {
+        // setup a default 
+        DimensionDefaultValueSetting defaultValueSetting = new DimensionDefaultValueSetting();
+        defaultValueSetting.setStrategyType(Strategy.FIXED);
+        defaultValueSetting.setReferenceValue("2011-05-02/2011-05-03");
+        setupResourceDimensionDefaultValue(V_TIME_ELEVATION, ResourceInfo.TIME, defaultValueSetting, "time");
+        
+        // request with default values
+        BufferedImage image = getAsImage("wms?service=WMS&version=1.1.1&request=GetMap"
+                + "&bbox=-180,-90,180,90&styles=&Format=image/png&width=80&height=40&srs=EPSG:4326"
+                + "&layers=" + getLayerId(V_TIME_ELEVATION), "image/png");
+        
+        // RenderedImageBrowser.showChain(image);
+
+        // the last three show up, the first does not
+        assertPixel(image, 20, 10, Color.WHITE);
+        assertPixel(image, 60, 10, Color.BLACK);
+        assertPixel(image, 20, 30, Color.BLACK);
+        assertPixel(image, 60, 30, Color.WHITE);
+    }
+    
+    @Test
+    public void testSortAllAscending() throws Exception {
+        BufferedImage image = getAsImage("wms?service=WMS&version=1.1.1&request=GetMap"
+                + "&bbox=-180,-90,180,90&styles=&Format=image/png&width=80&height=40&srs=EPSG:4326"
+                + "&layers=" + getLayerId(V_TIME_ELEVATION_STACKED) + "&sortBy=time, elevation",
+                "image/png");
+
+        // all blue
+        assertPixel(image, 20, 10, Color.BLUE);
+    }
+    
+    @Test
+    public void testSortTimeAElevationD() throws Exception {
+        BufferedImage image = getAsImage("wms?service=WMS&version=1.1.1&request=GetMap"
+                + "&bbox=-180,-90,180,90&styles=&Format=image/png&width=80&height=40&srs=EPSG:4326"
+                + "&layers=" + getLayerId(V_TIME_ELEVATION_STACKED) + "&sortBy=time, elevation D",
+                "image/png");
+
+        // all blue
+        assertPixel(image, 20, 10, Color.GREEN);
+    }
+    
+    @Test
+    public void testSortTimeDElevationA() throws Exception {
+        BufferedImage image = getAsImage("wms?service=WMS&version=1.1.1&request=GetMap"
+                + "&bbox=-180,-90,180,90&styles=&Format=image/png&width=80&height=40&srs=EPSG:4326"
+                + "&layers=" + getLayerId(V_TIME_ELEVATION_STACKED) + "&sortBy=time D, elevation",
+                "image/png");
+
+        // all blue
+        assertPixel(image, 20, 10, Color.RED);
+    }
+    
+    @Test
+    public void testSortDescending() throws Exception {
+        BufferedImage image = getAsImage("wms?service=WMS&version=1.1.1&request=GetMap"
+                + "&bbox=-180,-90,180,90&styles=&Format=image/png&width=80&height=40&srs=EPSG:4326"
+                + "&layers=" + getLayerId(V_TIME_ELEVATION_STACKED) + "&sortBy=time D,elevation D",
+                "image/png");
+
+        // all black
+        assertPixel(image, 20, 10, Color.BLACK);
+    }
+    
+    @Test
+    public void testSortInvalidAttribute() throws Exception {
+        Document dom = getAsDOM("wms?service=WMS&version=1.1.1&request=GetMap"
+                + "&bbox=-180,-90,180,90&styles=&Format=image/png&width=80&height=40&srs=EPSG:4326"
+                + "&layers=" + getLayerId(V_TIME_ELEVATION_STACKED) + "&sortBy=foo");
+        // print(dom);
+        XpathEngine xp = XMLUnit.newXpathEngine();
+        assertEquals(ServiceException.INVALID_PARAMETER_VALUE, xp.evaluate("/ServiceExceptionReport/ServiceException/@code", dom));
+        assertEquals("sortBy", xp.evaluate("/ServiceExceptionReport/ServiceException/@locator", dom));
+        assertThat(xp.evaluate("/ServiceExceptionReport/ServiceException", dom), containsString("'foo'"));
+    }
+    
+    @Test
+    public void testSortDescendingMultiLayer() throws Exception {
+        BufferedImage image = getAsImage("wms?service=WMS&version=1.1.1&request=GetMap"
+                + "&bbox=-180,-90,180,90&styles=&Format=image/png&width=80&height=40&srs=EPSG:4326"
+                + "&layers=" + getLayerId(SystemTestData.LAKES) + "," + getLayerId(V_TIME_ELEVATION_STACKED) + "&sortBy=()(time D,elevation D)",
+                "image/png");
+
+        // all black
+        assertPixel(image, 20, 10, Color.BLACK);
+    }
 }

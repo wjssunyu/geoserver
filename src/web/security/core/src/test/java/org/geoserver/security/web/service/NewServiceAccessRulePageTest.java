@@ -1,4 +1,4 @@
-/* (c) 2014 Open Source Geospatial Foundation - all rights reserved
+/* (c) 2014 - 2016 Open Source Geospatial Foundation - all rights reserved
  * (c) 2001 - 2013 OpenPlans
  * This code is licensed under the GPL 2.0 license, available at the root
  * application directory.
@@ -7,6 +7,7 @@ package org.geoserver.security.web.service;
 
 import static org.junit.Assert.*;
 
+import java.util.Arrays;
 import java.util.List;
 
 import org.apache.wicket.extensions.markup.html.form.palette.component.Recorder;
@@ -33,7 +34,7 @@ public class NewServiceAccessRulePageTest extends AbstractSecurityWicketTestSupp
         FormTester form = tester.newFormTester("form");
         int index = indexOf(page.serviceChoice.getChoices(),"wms");        
         form.select("service", index);
-        tester.executeAjaxEvent("form:service", "onchange");
+        tester.executeAjaxEvent("form:service", "change");
         form = tester.newFormTester("form");
         index = indexOf(page.methodChoice.getChoices(),"GetStyles");
         form.select("method", index);
@@ -77,6 +78,42 @@ public class NewServiceAccessRulePageTest extends AbstractSecurityWicketTestSupp
         assertEquals("ROLE_NEW",foundRule.getRoles().iterator().next());        
     }
     
+    /**
+     * See GEOS-7495
+     */
+    @SuppressWarnings("unchecked")
+    @Test
+    public void testListWfsOperations() throws Exception {
+        initializeForXML();
+        // insertValues();
+        tester.startPage(page = new NewServiceAccessRulePage());
+        tester.assertRenderedPage(NewServiceAccessRulePage.class);
+
+        FormTester form = tester.newFormTester("form");
+        int index = indexOf(page.serviceChoice.getChoices(), "wfs");
+        form.select("service", index);
+        tester.executeAjaxEvent("form:service", "change");
+
+        List<String> wfsOperations = (List<String>) page.methodChoice.getChoices();
+        List<String> expectedWfsOperations = Arrays.asList(
+                "*", 
+                "GetCapabilities", 
+                "DescribeFeatureType", 
+                "GetFeature",
+                "LockFeature", 
+                "Transaction", 
+                "GetGmlObject", 
+                "DropStoredQuery", 
+                "CreateStoredQuery",
+                "GetFeatureWithLock", 
+                "DescribeStoredQueries", 
+                "GetPropertyValue", 
+                "ListStoredQueries");
+        
+        assertEquals(expectedWfsOperations.size(), wfsOperations.size());
+        assertTrue(wfsOperations.containsAll(expectedWfsOperations));
+    }
+    
     @Test
     public void testDuplicateRule() throws Exception {
         initializeForXML();
@@ -86,7 +123,7 @@ public class NewServiceAccessRulePageTest extends AbstractSecurityWicketTestSupp
         FormTester form = tester.newFormTester("form");
         int index = indexOf(page.serviceChoice.getChoices(),"wms");        
         form.select("service", index);
-        tester.executeAjaxEvent("form:service", "onchange");
+        tester.executeAjaxEvent("form:service", "change");
         form = tester.newFormTester("form");
         index = indexOf(page.methodChoice.getChoices(),"GetMap");
         form.select("method", index);
@@ -106,7 +143,7 @@ public class NewServiceAccessRulePageTest extends AbstractSecurityWicketTestSupp
         FormTester form = tester.newFormTester("form");
         int index = indexOf(page.serviceChoice.getChoices(),"wms");        
         form.select("service", index);
-        tester.executeAjaxEvent("form:service", "onchange");
+        tester.executeAjaxEvent("form:service", "change");
         form = tester.newFormTester("form");
         index = indexOf(page.methodChoice.getChoices(),"GetStyles");
         form.select("method", index);

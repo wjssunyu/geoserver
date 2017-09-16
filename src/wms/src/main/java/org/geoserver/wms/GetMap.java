@@ -1,4 +1,4 @@
-/* (c) 2014 Open Source Geospatial Foundation - all rights reserved
+/* (c) 2014 - 2016 Open Source Geospatial Foundation - all rights reserved
  * (c) 2001 - 2014 OpenPlans
  * This code is licensed under the GPL 2.0 license, available at the root
  * application directory.
@@ -13,17 +13,22 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Calendar;
 import java.util.Collections;
+import java.util.Date;
 import java.util.GregorianCalendar;
 import java.util.List;
 import java.util.Map;
 import java.util.TimeZone;
+import java.util.TreeSet;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 
 import javax.media.jai.RenderedImageList;
 
+import org.geoserver.catalog.DimensionInfo;
 import org.geoserver.catalog.LayerInfo;
+import org.geoserver.catalog.ResourceInfo;
 import org.geoserver.catalog.WMSLayerInfo;
+import org.geoserver.catalog.WMTSLayerInfo;
 import org.geoserver.platform.GeoServerExtensions;
 import org.geoserver.platform.ServiceException;
 import org.geoserver.wms.map.MetatileMapOutputFormat;
@@ -36,6 +41,8 @@ import org.geotools.data.QueryCapabilities;
 import org.geotools.data.ows.Layer;
 import org.geotools.data.simple.SimpleFeatureSource;
 import org.geotools.data.wms.WebMapServer;
+
+import org.geotools.data.wmts.WebMapTileServer;
 import org.geotools.factory.CommonFactoryFinder;
 import org.geotools.factory.GeoTools;
 import org.geotools.factory.Hints;
@@ -44,21 +51,26 @@ import org.geotools.filter.visitor.SimplifyingFilterVisitor;
 import org.geotools.geometry.jts.ReferencedEnvelope;
 import org.geotools.map.FeatureLayer;
 import org.geotools.map.WMSLayer;
+import org.geotools.map.WMTSMapLayer;
 import org.geotools.referencing.crs.DefaultGeographicCRS;
 import org.geotools.renderer.lite.MetaBufferEstimator;
 import org.geotools.styling.FeatureTypeConstraint;
 import org.geotools.styling.FeatureTypeStyle;
 import org.geotools.styling.Rule;
 import org.geotools.styling.Style;
+import org.geotools.util.DateRange;
+import org.geotools.util.NumberRange;
 import org.geotools.util.logging.Logging;
 import org.opengis.feature.Feature;
 import org.opengis.feature.type.FeatureType;
 import org.opengis.filter.Filter;
 import org.opengis.filter.FilterFactory;
+import org.opengis.filter.sort.SortBy;
 import org.opengis.parameter.GeneralParameterValue;
 import org.opengis.referencing.crs.CoordinateReferenceSystem;
 
 import com.vividsolutions.jts.geom.Envelope;
+import org.geoserver.ows.Dispatcher;
 
 /**
  * WMS GetMap operation default implementation.
@@ -68,7 +80,7 @@ import com.vividsolutions.jts.geom.Envelope;
 public class GetMap {
 
     private static final Logger LOGGER = Logging.getLogger(GetMap.class);
-
+    
     private FilterFactory ff;
 
     private final WMS wms;
@@ -120,6 +132,7 @@ public class GetMap {
             map = fireFinished(map);
             return map;
         } catch (Throwable t) {
+            mapContent.dispose();
             fireFailed(t);
             if(t instanceof RuntimeException) {
                 throw (RuntimeException) t;
@@ -203,23 +216,38 @@ public class GetMap {
             delegate = new MetatileMapOutputFormat(request, (RenderedImageMapOutputFormat) delegate);
         }
 
+        // check if the format can do animations
+        final boolean isMultivaluedSupported = (cap != null ? cap.isMultivalueRequestsSupported() : false);
+        
         //
         // Test if the parameter "TIME" or ELEVATION are present in the WMS
         // request
         // TIME
         List<Object> times = request.getTime();
         final int numTimes = times.size();
+        boolean singleTimeRange = numTimes == 1 && times.get(0) instanceof DateRange;
 
         // ELEVATION
-        final List<Object> elevations = request.getElevation();
+        List<Object> elevations = request.getElevation();
         final int numElevations = elevations.size();
+        boolean singleElevationRange = numElevations == 1 && elevations.get(0) instanceof NumberRange;
 
         // handling time series and elevation series
-        final boolean isMultivaluedSupported = (cap != null ? cap.isMultivalueRequestsSupported() : false);
-        if(numTimes > 1 && isMultivaluedSupported) {
+        MaxAnimationTimeHelper maxAnimationTimeHelper = new MaxAnimationTimeHelper(wms, request);
+        int maxAllowedFrames = wms.getMaxAllowedFrames();
+        if((numTimes > 1 || singleTimeRange) && isMultivaluedSupported) {
             WebMap map = null;
             List<RenderedImage> images = new ArrayList<RenderedImage>();
+            if(singleTimeRange) {
+                List<Object> expandTimeList = expandTimeList((DateRange) times.get(0), request, maxAllowedFrames);
+                if(expandTimeList.size() == 0) {
+                    return executeInternal(mapContent, request, delegate, Arrays.asList(times.get(0)), elevations);
+                } else {
+                    times = expandTimeList;
+                }
+            }
             for (Object currentTime : times) {
+                maxAnimationTimeHelper.checkTimeout();
                 map = executeInternal(mapContent, request, delegate, Arrays.asList(currentTime), elevations);
                 
                 // remove layers to start over again
@@ -230,10 +258,19 @@ public class GetMap {
             }
             RenderedImageList imageList = new RenderedImageList(images);
             return new  RenderedImageMap(mapContent, imageList , map.getMimeType());
-        } else if(numElevations > 1 && isMultivaluedSupported) {
+        } else if((numElevations > 1 || singleElevationRange) && isMultivaluedSupported) {
             WebMap map = null;
             List<RenderedImage> images = new ArrayList<RenderedImage>();
-            for (Object currentElevation : elevations){
+            if(singleElevationRange) {
+                List<Object> expandElevationList = expandElevationList((NumberRange) elevations.get(0), request, maxAllowedFrames);
+                if(expandElevationList.size() == 0) {
+                    map = executeInternal(mapContent, request, delegate, times, Arrays.asList(elevations.get(0)));
+                } else {
+                    elevations = expandElevationList;
+                }
+            }
+            for (Object currentElevation : elevations) {
+                maxAnimationTimeHelper.checkTimeout();
                 map = executeInternal(mapContent, request, delegate, times, Arrays.asList(currentElevation));
                 
                 // remove layers to start over again
@@ -250,6 +287,94 @@ public class GetMap {
 
     }
 
+    private List<Object> expandTimeList(DateRange queryRange, GetMapRequest request, int maxAllowedFrames) {
+        TreeSet<Date> result = new TreeSet<>(); 
+        try {
+            for (MapLayerInfo l : request.getLayers()) {
+                ResourceInfo ri = l.getLayerInfo().getResource();
+                if(ri == null) {
+                    continue;
+                }
+                DimensionInfo timeInfo = ri.getMetadata().get(ResourceInfo.TIME, DimensionInfo.class);
+                if(timeInfo == null) {
+                    continue;
+                }
+                
+                // it has time configured
+                if(l.getType() == MapLayerInfo.TYPE_VECTOR) {
+                    TreeSet<Object> times = wms.queryFeatureTypeTimes(l.getFeature(), queryRange, maxAllowedFrames);
+                    accumulateTimes(result, times, maxAllowedFrames);
+                } else if(l.getType() == MapLayerInfo.TYPE_RASTER) {
+                    TreeSet<Object> times = wms.queryCoverageTimes(l.getCoverage(), queryRange, maxAllowedFrames);
+                    accumulateTimes(result, times, maxAllowedFrames);
+                }
+            }
+        } catch (IOException e) {
+            throw new ServiceException("Failed to compute list of times in the range " + queryRange, e);
+        }
+        
+        return new ArrayList<>(result);
+    }
+
+    private void accumulateTimes(TreeSet<Date> result, TreeSet<Object> times, int maxAllowedFrames) {
+        for (Object time : times) {
+            if(time instanceof Date) {
+                result.add((Date) time);
+            } else if(time instanceof DateRange) {
+                DateRange range = ((DateRange) time);
+                Date rangeMid = new Date((range.getMinValue().getTime() + range.getMaxValue().getTime()) / 2);
+                result.add(rangeMid);
+            }
+            if(result.size() > maxAllowedFrames) {
+                throw new ServiceException("Too many steps in the animation");
+            }
+        }
+    }
+    
+    private List<Object> expandElevationList(NumberRange queryRange, GetMapRequest request, int maxAllowedFrames) {
+        TreeSet<Double> result = new TreeSet<>(); 
+        try {
+            for (MapLayerInfo l : request.getLayers()) {
+                ResourceInfo ri = l.getLayerInfo().getResource();
+                if(ri == null) {
+                    continue;
+                }
+                DimensionInfo elevationInfo = ri.getMetadata().get(ResourceInfo.ELEVATION, DimensionInfo.class);
+                if(elevationInfo == null) {
+                    continue;
+                }
+                
+                // it has elevaton configured
+                if(l.getType() == MapLayerInfo.TYPE_VECTOR) {
+                    TreeSet<Object> elevations = wms.queryFeatureTypeElevations(l.getFeature(), queryRange, maxAllowedFrames);
+                    accumulateElevations(result, elevations, maxAllowedFrames);
+                } else if(l.getType() == MapLayerInfo.TYPE_RASTER) {
+                    TreeSet<Object> elevations = wms.queryCoverageElevations(l.getCoverage(), queryRange, maxAllowedFrames);
+                    accumulateElevations(result, elevations, maxAllowedFrames);
+                }
+            }
+        } catch (IOException e) {
+            throw new ServiceException("Failed to compute list of times in the range " + queryRange, e);
+        }
+        
+        return new ArrayList<>(result);
+    }
+    
+    private void accumulateElevations(TreeSet<Double> result, TreeSet<Object> elevations, int maxAllowedFrames) {
+        for (Object elevation : elevations) {
+            if(elevation instanceof Number) {
+                result.add(((Number) elevation).doubleValue());
+            } else if(elevation instanceof NumberRange) {
+                NumberRange range = ((NumberRange) elevation);
+                double rangeMid = (range.getMinimum() + range.getMaximum()) / 2;
+                result.add(rangeMid);
+            }
+            if(result.size() > maxAllowedFrames) {
+                throw new ServiceException("Too many steps in the animation");
+            }
+        }
+    }
+
     /**
      * Actually computes the WebMap, either in a single shot, or for a particular
      * time/elevation value should there be a list of them
@@ -257,7 +382,7 @@ public class GetMap {
      * @param mapContent
      * @param delegate
      * @param env
-     * @return
+     *
      * @throws IOException
      */
     WebMap executeInternal(WMSMapContent mapContent, final GetMapRequest request,
@@ -268,6 +393,8 @@ public class GetMap {
         
         final Style[] styles = request.getStyles().toArray(new Style[] {});
         final Filter[] filters = buildLayersFilters(request.getFilter(), layers);
+        final List<SortBy[]> sorts = request.getSortByArrays();
+        
 
         // if there's a crs in the request, use that. If not, assume its 4326
         final CoordinateReferenceSystem mapcrs = request.getCrs();
@@ -325,6 +452,7 @@ public class GetMap {
 
             final Style layerStyle = styles[i];
             final Filter layerFilter = SimplifyingFilterVisitor.simplify(filters[i]);
+            final SortBy[] layerSort = sorts != null ? sorts.get(i) : null;
 
             final org.geotools.map.Layer layer;
 
@@ -338,6 +466,7 @@ public class GetMap {
                 final Query definitionQuery = new Query(source.getSchema().getTypeName());
                 definitionQuery.setFilter(layerFilter);
                 definitionQuery.setVersion(featureVersion);
+                definitionQuery.setSortBy(layerSort);
                 int maxFeatures = request.getMaxFeatures() != null ? request.getMaxFeatures()
                         : Integer.MAX_VALUE;
                 definitionQuery.setMaxFeatures(maxFeatures);
@@ -355,6 +484,12 @@ public class GetMap {
                 // /////////////////////////////////////////////////////////
                 try {
                     source = mapLayerInfo.getFeatureSource(true);
+                    
+                    if (layerSort != null) {
+                        // filter gets validated down in the renderer, but
+                        // sorting is done without the renderer knowing, perform validation here
+                        validateSort(source, layerSort, mapLayerInfo);
+                    }
 
                     // NOTE for the feature. Here there was some code that
                     // sounded like:
@@ -384,11 +519,12 @@ public class GetMap {
                 
                 // mix the dimension related filter with the layer filter
                 Filter dimensionFilter = wms.getTimeElevationToFilter(times, elevations, mapLayerInfo.getFeature());
-                Filter filter = Filters.and(ff, layerFilter, dimensionFilter); 
+                Filter filter = SimplifyingFilterVisitor.simplify(Filters.and(ff, layerFilter, dimensionFilter)); 
 
                 final Query definitionQuery = new Query(source.getSchema().getName().getLocalPart());
                 definitionQuery.setVersion(featureVersion);
                 definitionQuery.setFilter(filter);
+                definitionQuery.setSortBy(layerSort);
             	if (viewParams != null) {
                     definitionQuery.setHints(new Hints(Hints.VIRTUAL_TABLE_PARAMETERS, viewParams.get(i)));
             	}
@@ -430,7 +566,7 @@ public class GetMap {
 
                     // get the group of parameters tha this reader supports
                     GeneralParameterValue[] readParameters = wms.getWMSReadParameters(request,
-                            mapLayerInfo, layerFilter, times, elevations, reader, false);
+                            mapLayerInfo, layerFilter, layerSort, times, elevations, reader, false);
                     try {
 
                         try {
@@ -482,8 +618,21 @@ public class GetMap {
                     Layer.setTitle(wmsLayer.prefixedName());
                     mapContent.addLayer(Layer);
                 }
+            } else if (layerType == MapLayerInfo.TYPE_WMTS) {
+                WMTSLayerInfo wmtsLayer = (WMTSLayerInfo) mapLayerInfo.getResource();
+                WebMapTileServer wmts = wmtsLayer.getStore().getWebMapTileServer(null);
+                Layer gt2Layer = wmtsLayer.getWMTSLayer(null);
+
+
+                WMTSMapLayer mapLayer = new WMTSMapLayer(wmts, gt2Layer);
+                mapLayer.setTitle(wmtsLayer.prefixedName());
+
+                mapLayer.setRawTime((String)Dispatcher.REQUEST.get().getRawKvp().get("time"));
+
+                mapContent.addLayer(mapLayer);
+                
             } else {
-                throw new IllegalArgumentException("Unkown layer type " + layerType);
+                throw new IllegalArgumentException("Unknown layer type " + layerType);
             }
         }
 
@@ -514,6 +663,19 @@ public class GetMap {
         }
 
         return map;
+    }
+
+    private void validateSort(FeatureSource<? extends FeatureType, ? extends Feature> source,
+            SortBy[] sort, MapLayerInfo mapLayerInfo) {
+        FeatureType ft = source.getSchema();
+        for (SortBy sortBy : sort) {
+            if (sortBy.getPropertyName().evaluate(ft) == null) {
+                throw new ServiceException(
+                        "Sort property '" + sortBy.getPropertyName().getPropertyName()
+                                + "' not available in " + mapLayerInfo.getName(),
+                        ServiceException.INVALID_PARAMETER_VALUE, "sortBy");
+            }
+        }
     }
 
     /**
@@ -569,7 +731,7 @@ public class GetMap {
      * 
      * @param style
      * @param scaleDenominator
-     * @return
+     *
      */
     static int computeLayerBuffer(Style style, double scaleDenominator) {
         final double TOLERANCE = 1e-6;
@@ -631,7 +793,7 @@ public class GetMap {
     }
 
     /**
-     * Returns the list of filters resulting of comining the layers definition filters with the per
+     * Returns the list of filters resulting of combining the layers definition filters with the per
      * layer filters made by the user.
      * <p>
      * If <code>requestFilters != null</code>, it shall contain the same number of elements than
@@ -667,7 +829,7 @@ public class GetMap {
             if (layer.getType() == MapLayerInfo.TYPE_REMOTE_VECTOR || layer.getType() == MapLayerInfo.TYPE_RASTER) {
                 combinedList[i] = userRequestedFilter;
             } else if (layer.getType() == MapLayerInfo.TYPE_VECTOR) {
-                layerDefinitionFilter = layer.getFeature().getFilter();
+                layerDefinitionFilter = layer.getFeature().filter();
 
                 // heck, how I wish we use the null objects more
                 if (layerDefinitionFilter == null) {
@@ -707,7 +869,7 @@ public class GetMap {
      *             <code>request</code> or if it can't be instantiated or the format is not
      *             allowed
      */
-    private GetMapOutputFormat getDelegate(final String outputFormat) throws ServiceException {
+    protected GetMapOutputFormat getDelegate(final String outputFormat) throws ServiceException {
 
         final GetMapOutputFormat producer = wms.getMapOutputFormat(outputFormat);
         if (producer == null) {

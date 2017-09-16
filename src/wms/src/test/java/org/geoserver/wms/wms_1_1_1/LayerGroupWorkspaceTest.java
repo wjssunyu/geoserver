@@ -65,13 +65,13 @@ public class LayerGroupWorkspaceTest extends WMSTestSupport {
     @After
     public void rollback() throws Exception {
         Catalog cat = getCatalog();
+        if(nested != null) {
+            cat.remove(nested);
+        }
         cat.remove(cite);
         cat.remove(sf);
         cat.remove(global);
         cat.remove(global2);
-        if(nested != null) {
-            cat.remove(nested);
-        }
     }
 
     LayerInfo layer(Catalog cat, QName name) {
@@ -83,7 +83,11 @@ public class LayerGroupWorkspaceTest extends WMSTestSupport {
         group.setName(name);
         group.setTitle("title for layer group " + title);
         group.setAbstract("abstract for layer group " + title);
-        group.getLayers().addAll(Arrays.asList(layers));
+        for (PublishedInfo layer : layers) {
+            group.getLayers().add(layer);
+            group.getStyles().add(null);
+        }
+
         new CatalogBuilder(cat).calculateLayerGroupBounds(group);
         return group;
     }
@@ -137,7 +141,7 @@ public class LayerGroupWorkspaceTest extends WMSTestSupport {
         assertXpathExists("/WMT_MS_Capabilities/Capability/Layer/Layer/Name[text() = 'base']", dom);
 
         // check it doesn't have children Layers
-        assertXpathNotExists("/WMT_MS_Capabilities/Capability/Layer/Layer/Layer", dom);
+        assertXpathNotExists("/WMT_MS_Capabilities/Capability/Layer/Layer[Name = 'base']/Layer", dom);
         
         // check its layers are present at the same level
         assertXpathExists("/WMT_MS_Capabilities/Capability/Layer/Layer/Name[text() = 'cite:Lakes']", dom);

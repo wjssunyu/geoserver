@@ -1,4 +1,4 @@
-/* (c) 2014 Open Source Geospatial Foundation - all rights reserved
+/* (c) 2014 - 2015 Open Source Geospatial Foundation - all rights reserved
  * (c) 2001 - 2013 OpenPlans
  * This code is licensed under the GPL 2.0 license, available at the root
  * application directory.
@@ -17,6 +17,7 @@ import org.geoserver.catalog.FeatureTypeInfo;
 import org.geoserver.catalog.NamespaceInfo;
 import org.geoserver.catalog.ResourceInfo;
 import org.geoserver.catalog.WMSLayerInfo;
+import org.geoserver.catalog.WMTSLayerInfo;
 import org.geoserver.config.GeoServerDataDirectory;
 import org.geoserver.platform.GeoServerExtensions;
 import org.geoserver.platform.GeoServerResourceLoader;
@@ -83,7 +84,7 @@ public class GeoServerTemplateLoader implements TemplateLoader {
      * Feature type directory to load template against. Its presence is mutually
      * exclusive with coverageName
      */
-    ResourceInfo resource;
+    protected ResourceInfo resource;
     
     /**
      * Feature type directory to load template against. Its presence is mutually
@@ -170,6 +171,10 @@ public class GeoServerTemplateLoader implements TemplateLoader {
 
     public void setWMSLayer(WMSLayerInfo wms){
         this.resource = wms;
+    }
+
+    public void setWMTSLayer(WMTSLayerInfo wmts){
+        this.resource = wmts;
     }
     
     /**

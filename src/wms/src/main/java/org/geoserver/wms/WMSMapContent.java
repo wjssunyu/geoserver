@@ -1,4 +1,4 @@
-/* (c) 2014 Open Source Geospatial Foundation - all rights reserved
+/* (c) 2014 - 2016 Open Source Geospatial Foundation - all rights reserved
  * (c) 2001 - 2013 OpenPlans
  * This code is licensed under the GPL 2.0 license, available at the root
  * application directory.
@@ -14,6 +14,7 @@ import java.util.ArrayList;
 import java.util.Collection;
 import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 
 import org.geoserver.platform.ServiceException;
 import org.geotools.geometry.jts.ReferencedEnvelope;
@@ -62,6 +63,10 @@ public class WMSMapContent extends MapContent {
     private double angle;
     
     private List<GetMapCallback> callbacks;
+    
+    private Map<String, Object> metadata = new HashMap<>();
+    
+    private Integer maxRenderingTime;
 
     public int getTileSize() {
         return tileSize;
@@ -94,7 +99,23 @@ public class WMSMapContent extends MapContent {
         super();
         request = req;
     }
-
+    
+    public WMSMapContent(WMSMapContent other, boolean copyLayers) {
+        this.mapWidth = other.mapWidth;
+        this.mapHeight = other.mapHeight;
+        this.bgColor = other.bgColor;
+        this.transparent = other.transparent;
+        this.tileSize = other.tileSize;
+        this.angle = other.angle;
+        this.callbacks = new ArrayList<>(other.callbacks);
+        this.buffer = other.buffer;
+        this.icm = other.icm;
+        this.request = other.request;
+        if(copyLayers) {
+            this.layers().addAll(other.layers());
+        }
+        this.getViewport().setBounds(other.getViewport().getBounds());
+    }
 
     public Color getBgColor() {
         return this.bgColor;
@@ -155,7 +176,7 @@ public class WMSMapContent extends MapContent {
     /**
      * The clockwise rotation angle of the map, in degrees
      * 
-     * @return
+     *
      */
     public double getAngle() {
         return angle;
@@ -213,7 +234,7 @@ public class WMSMapContent extends MapContent {
      * Returns the transformation going from the map area space to the screen space taking into
      * account map rotation
      * 
-     * @return
+     *
      */
     public AffineTransform getRenderingTransform() {
         Rectangle paintArea = new Rectangle(0, 0, getMapWidth(), getMapHeight());
@@ -235,7 +256,7 @@ public class WMSMapContent extends MapContent {
      * Returns the actual area that should be drawn taking into account the map rotation account map
      * rotation
      * 
-     * @return
+     *
      */
     public ReferencedEnvelope getRenderingArea() {
         ReferencedEnvelope dataArea = getViewport().getBounds(); 
@@ -378,7 +399,7 @@ public class WMSMapContent extends MapContent {
      * Computes the StreamingRenderer scale computation method hint based on the current request
      * 
      * @param request
-     * @return
+     *
      */
     public String getRendererScaleMethod() {
         if (request.getScaleMethod() == ScaleComputationMethod.Accurate) {
@@ -387,4 +408,22 @@ public class WMSMapContent extends MapContent {
             return StreamingRenderer.SCALE_OGC;
         }
     }
+    
+    /**
+     * Generic map attached to the map content, can be used to persist information around the life cycle
+     * when the {@link WebMap} is not appropriate, or to persist state across the various response callbacks
+     * @return
+     */
+    public Map<String, Object> getMetadata() {
+        return metadata;
+    }
+    
+    @Override
+    public void dispose() {
+        this.request = null;
+        this.callbacks = null;
+        this.metadata = null;
+        super.dispose();
+    }
+    
 }

@@ -1,4 +1,4 @@
-.. _sec_tutorials_credentialsfromheaders:
+.. _security_tutorials_credentialsfromheaders:
 
 Configuring Apache HTTPD Session Integration
 ============================================
@@ -9,8 +9,8 @@ Introduction
 When using Apache HTTPD as a proxy frontend for GeoServer, it is possible to share
 authentication with a proper configuration of both.
 
-This requires enabling Session for the Geoserver location in Apache HTTPD and adding 
-a custom Request Header with the session content, so that the Geoserver security system
+This requires enabling Session for the GeoServer location in Apache HTTPD and adding 
+a custom Request Header with the session content, so that the GeoServer security system
 can receive user credentials and use them to authenticate the user with its internal 
 filters.
 
@@ -77,6 +77,7 @@ Test a login
 ------------------
 
 #. Execute the following curl command (with a wrong password)::
+
       curl -v -H "X-Credentials: private-user=admin&private-pw=wrong" "http://localhost:8080/geoserver/wms?service=WMS&version=1.1.1&request=GetCapabilities"
    
    The result should be a 403 response signaling that access is denied. The output 
@@ -109,7 +110,7 @@ Test a login
 
 
 Configure Apache HTTPD to forward an Header with authentication credentials
------------------------------------------------------
+---------------------------------------------------------------------------
 
 This can be done with an HTTPD configuration that looks like the following:
 
@@ -124,7 +125,7 @@ This can be done with an HTTPD configuration that looks like the following:
 			RequestHeader set X-Credentials "%{HTTP_SESSION}e"
 		</Location>
 
-This configuration adds a new `X-Credentials` Request Header to each Geoserver request.
+This configuration adds a new `X-Credentials` Request Header to each GeoServer request.
 The request header will contain the HTTPD Session information in a special format.
 
 An example of the Session content is the following:

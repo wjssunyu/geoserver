@@ -17,7 +17,7 @@ import org.geotools.geopkg.TileMatrix;
 import org.geotools.geopkg.TileReader;
 import org.junit.Test;
 
-import com.mockrunner.mock.web.MockHttpServletResponse;
+import org.springframework.mock.web.MockHttpServletResponse;
 
 public class GeoPackageProcessTest extends WPSTestSupport {
     
@@ -53,6 +53,9 @@ public class GeoPackageProcessTest extends WPSTestSupport {
         assertEquals(500000, fe.getBounds().getMinY(), 0.0001);
         assertEquals(500100, fe.getBounds().getMaxX(), 0.0001);
         assertEquals(500100, fe.getBounds().getMaxY(), 0.0001);
+        
+        assertFalse(gpkg.hasSpatialIndex(fe));
+        assertTrue(gpkg.hasSpatialIndex(features.get(1)));
         
         SimpleFeatureReader fr = gpkg.reader(fe, null, null);
         assertEquals(1, fr.getFeatureType().getAttributeCount());
@@ -228,6 +231,7 @@ public class GeoPackageProcessTest extends WPSTestSupport {
         " <fes:Literal>Blue Lake</fes:Literal>" +
         " </fes:PropertyIsEqualTo>" +
         " </filter>" +
+        "    <indexed>true</indexed>" +
         "   </features>" +
         "  <tiles name=\"world_lakes\" identifier=\"wl1\">" +
         "    <description>world and lakes overlay</description>  " +  

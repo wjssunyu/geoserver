@@ -1,4 +1,4 @@
-/* (c) 2014 Open Source Geospatial Foundation - all rights reserved
+/* (c) 2014 - 2015 Open Source Geospatial Foundation - all rights reserved
  * (c) 2001 - 2013 OpenPlans
  * This code is licensed under the GPL 2.0 license, available at the root
  * application directory.
@@ -33,12 +33,13 @@ import org.geoserver.catalog.NamespaceInfo;
 import org.geoserver.catalog.StyleInfo;
 import org.geoserver.catalog.WMSLayerInfo;
 import org.geoserver.catalog.WMSStoreInfo;
+import org.geoserver.catalog.WMTSLayerInfo;
+import org.geoserver.catalog.WMTSStoreInfo;
 import org.geoserver.catalog.WorkspaceInfo;
 import org.geoserver.config.util.XStreamPersisterFactory;
 import org.geoserver.data.test.SystemTestData;
 import org.geoserver.test.GeoServerSystemTestSupport;
 import org.geoserver.test.SystemTest;
-import org.geotools.data.DataUtilities;
 import org.junit.Before;
 import org.junit.Test;
 import org.junit.experimental.categories.Category;
@@ -436,7 +437,100 @@ public class GeoServerPersisterTest extends GeoServerSystemTestSupport {
         
         assertFalse( d.exists() );
     }
-    
+
+    @Test
+    public void testAddWMTSStore() throws Exception {
+        testAddWorkspace();
+
+        File dir = new File( testData.getDataDirectoryRoot(), "workspaces/acme/demowmts");
+        assertFalse( dir.exists() );
+
+        WMTSStoreInfo wmts = catalog.getFactory().createWebMapTileServer();
+        wmts.setName( "demowmts" );
+        wmts.setWorkspace( catalog.getWorkspaceByName( "acme" ) );
+        catalog.add( wmts );
+
+        assertTrue( dir.exists() );
+        assertTrue( new File( dir, "wmtsstore.xml").exists() );
+    }
+
+    @Test
+    public void testModifyWMTSStore() throws Exception {
+        testAddWMTSStore();
+
+        WMTSStoreInfo wmts = catalog.getStoreByName( "acme", "demowmts", WMTSStoreInfo.class );
+        assertNull( wmts.getCapabilitiesURL() );
+
+        String capsURL = "http://demo.opengeo.org:8080/geoserver/gwc?request=GetCapabilites&service=WMTS";
+        wmts.setCapabilitiesURL(capsURL);
+        catalog.save( wmts );
+
+        File f = new File( testData.getDataDirectoryRoot(), "workspaces/acme/demowmts/wmtsstore.xml");
+        Document dom = dom( f );
+        assertXpathEvaluatesTo(capsURL, "/wmtsStore/capabilitiesURL/text()", dom);
+    }
+
+    @Test
+    public void testRemoveWMTSStore() throws Exception {
+        testAddWMTSStore();
+
+        File f = new File( testData.getDataDirectoryRoot(), "workspaces/acme/demowmts");
+        assertTrue( f.exists() );
+
+        WMTSStoreInfo wmts = catalog.getStoreByName("acme", "demowmts", WMTSStoreInfo.class);
+        catalog.remove( wmts );
+        assertFalse( f.exists() );
+    }
+
+    @Test
+    public void testAddWMTSLayer() throws Exception {
+        testAddWMTSStore();
+
+        File d = new File( testData.getDataDirectoryRoot(), "workspaces/acme/demowmts/foo_wmts");
+        assertFalse( d.exists() );
+
+        NamespaceInfo ns = catalog.getFactory().createNamespace();
+        ns.setPrefix( "bar" );
+        ns.setURI( "http://bar" );
+        catalog.add( ns );
+
+        WMTSLayerInfo wmts = catalog.getFactory().createWMTSLayer();
+        wmts.setName( "foo_wmts" );
+        wmts.setNamespace( ns );
+        wmts.setStore(catalog.getStoreByName("acme", "demowmts", WMTSStoreInfo.class));
+        catalog.add( wmts );
+
+        assertTrue( d.exists() );
+        assertTrue( new File( d, "wmtslayer.xml").exists() );
+    }
+
+    @Test
+    public void testModifyWMTSLayer() throws Exception {
+        testAddWMTSLayer();
+
+        WMTSLayerInfo wli = catalog.getResourceByName( "bar", "foo_wmts", WMTSLayerInfo.class );
+        wli.setTitle( "fooTitle" );
+        catalog.save( wli );
+
+        File f = new File( testData.getDataDirectoryRoot(), "workspaces/acme/demowmts/foo_wmts/wmtslayer.xml");
+        Document dom = dom( f );
+
+        assertXpathEvaluatesTo( "fooTitle", "/wmtsLayer/title", dom );
+    }
+
+    @Test
+    public void testRemoveWMTSLayer() throws Exception {
+        testAddWMTSLayer();
+
+        File d = new File( testData.getDataDirectoryRoot(), "workspaces/acme/demowmts/foo_wmts");
+        assertTrue( d.exists() );
+
+        WMTSLayerInfo wli = catalog.getResourceByName( "bar", "foo_wmts", WMTSLayerInfo.class );
+        catalog.remove( wli );
+
+        assertFalse( d.exists() );
+    }
+
     @Test
     public void testAddLayer() throws Exception {
         testAddFeatureType();
@@ -571,6 +665,30 @@ public class GeoServerPersisterTest extends GeoServerSystemTestSupport {
         assertThat( sldFile, not(fileExists()) );
         assertThat( renamedSldFile, fileExists() );
     }
+    
+    @Test
+    public void testRenameStyleWithExistingIncrementedVersion() throws Exception {
+        testAddStyle();
+        File sldFile = new File(testData.getDataDirectoryRoot(), "styles/foostyle.sld");
+        sldFile.createNewFile();
+
+        File sldFile1 = new File(testData.getDataDirectoryRoot(), "styles/foostyle1.sld");
+        sldFile1.createNewFile();
+
+        File xmlFile1 = new File(testData.getDataDirectoryRoot(), "styles/foostyle1.xml");
+        xmlFile1.createNewFile();
+
+        StyleInfo s = catalog.getStyleByName("foostyle");
+        s.setName("foostyle");
+        catalog.save(s);
+
+        assertThat( sldFile, fileExists() );
+        assertThat( sldFile1, fileExists() );
+        assertThat( xmlFile1, fileExists() );
+
+        sldFile1.delete();
+        xmlFile1.delete();
+    }
 
     @Test
     public void testModifyStyleChangeWorkspace() throws Exception {
@@ -610,6 +728,28 @@ public class GeoServerPersisterTest extends GeoServerSystemTestSupport {
 
         assertTrue(new File( testData.getDataDirectoryRoot(), "workspaces/gs/styles/foostyle.xml").exists());
         assertTrue(new File( testData.getDataDirectoryRoot(), "workspaces/gs/styles/foostyle.sld").exists());
+    }
+
+    @Test
+    public void testModifyStyleChangeWorkspaceToGlobal() throws Exception {
+        testAddStyleWithWorkspace();
+
+        //copy an sld into place
+        FileUtils.copyURLToFile(getClass().getResource("default_line.sld"),
+                new File(testData.getDataDirectoryRoot(), "workspaces/gs/styles/foostyle.sld"));
+
+        assertTrue(new File( testData.getDataDirectoryRoot(), "workspaces/gs/styles/foostyle.xml").exists());
+        assertTrue(new File( testData.getDataDirectoryRoot(), "workspaces/gs/styles/foostyle.sld").exists());
+
+        StyleInfo s = catalog.getStyleByName( "foostyle" );
+        s.setWorkspace(null);
+        catalog.save( s );
+
+        assertTrue(new File( testData.getDataDirectoryRoot(), "styles/foostyle.xml").exists());
+        assertTrue(new File( testData.getDataDirectoryRoot(), "styles/foostyle.sld").exists());
+
+        assertFalse(new File( testData.getDataDirectoryRoot(), "workspaces/gs/styles/foostyle.xml").exists());
+        assertFalse(new File( testData.getDataDirectoryRoot(), "workspaces/gs/styles/foostyle.sld").exists());
     }
 
     @Test
@@ -770,12 +910,40 @@ public class GeoServerPersisterTest extends GeoServerSystemTestSupport {
         
         File f = new File( testData.getDataDirectoryRoot(), 
             "styles/foostyle.xml");
-        assertTrue( f.exists() );
+        assertTrue(f.exists());
         
-        StyleInfo s = catalog.getStyleByName( "foostyle" );
-        catalog.remove( s );
+        File sf = new File( testData.getDataDirectoryRoot(), 
+                "styles/foostyle.sld");
+        sf.createNewFile();
+        assertTrue(sf.exists());
         
-        assertThat( f, not(fileExists()) );
+        StyleInfo s = catalog.getStyleByName( "foostyle" );        
+        catalog.remove(s);
+        
+        assertThat(f, not(fileExists()));
+        assertThat(sf, not(fileExists()));
+        
+        File sfb = new File( testData.getDataDirectoryRoot(), 
+                "styles/foostyle.sld.bak");
+        assertThat(sfb, fileExists() );
+        
+        //do it a second time
+        
+        testAddStyle();               
+        sf = new File( testData.getDataDirectoryRoot(), 
+                "styles/foostyle.sld");
+        sf.createNewFile();
+        assertTrue(sf.exists());
+        
+        s = catalog.getStyleByName("foostyle");        
+        catalog.remove(s);
+        
+        assertThat(f, not(fileExists()));
+        assertThat(sf, not(fileExists()));
+        
+        sfb = new File( testData.getDataDirectoryRoot(), 
+                "styles/foostyle.sld.bak.1");
+        assertThat(sfb, fileExists());
     }
 
     @Test
@@ -790,7 +958,7 @@ public class GeoServerPersisterTest extends GeoServerSystemTestSupport {
         assertTrue( f.exists() );
 
         s = catalog.getStyleByName("foostyle");
-        assertNull(s);
+        assertNotNull(s);
         s = catalog.getStyleByName(catalog.getDefaultWorkspace(), "foostyle");
         catalog.remove(s);
         assertFalse( f.exists() );

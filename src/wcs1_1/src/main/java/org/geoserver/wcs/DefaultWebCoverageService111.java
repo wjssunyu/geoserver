@@ -349,7 +349,7 @@ public class DefaultWebCoverageService111 implements WebCoverageService111 {
             // make sure we work in streaming mode
             //
             // work in streaming fashion when JAI is involved
-            readParameters = WCSUtils.replaceParameter(readParameters, Boolean.FALSE,
+            readParameters = WCSUtils.replaceParameter(readParameters, Boolean.TRUE,
                     AbstractGridFormat.USE_JAI_IMAGEREAD);
 
             //
@@ -556,7 +556,9 @@ public class DefaultWebCoverageService111 implements WebCoverageService111 {
                 return new GridCoverage[] { bandSelectedCoverage };
             }
         } catch (Throwable e) {
-            CoverageCleanerCallback.addCoverages(coverage);
+            if (coverage != null) {
+                CoverageCleanerCallback.addCoverages(coverage);
+            }
             if (e instanceof WcsException) {
                 throw (WcsException) e;
             } else {
@@ -633,7 +635,7 @@ public class DefaultWebCoverageService111 implements WebCoverageService111 {
             return;
         }
 
-        // workaround for http://jira.codehaus.org/browse/GEOT-1710
+        // workaround for https://osgeo-org.atlassian.net/projects/GEOT/issues/GEOT-1710
         if ("urn:ogc:def:crs:OGC:1.3:CRS84".equals(bbox.getCrs())) {
             bbox.setCrs("EPSG:4326");
         }
@@ -822,7 +824,7 @@ public class DefaultWebCoverageService111 implements WebCoverageService111 {
      * http://... prefixes)
      * 
      * @param srsName
-     * @return
+     *
      */
     private String extractCode(String srsName) {
         if (srsName.startsWith("http://www.opengis.net/gml/srs/epsg.xml#"))
@@ -841,7 +843,7 @@ public class DefaultWebCoverageService111 implements WebCoverageService111 {
      * 
      * @param supportedFormats
      * @param format
-     * @return
+     *
      */
     private String getDeclaredFormat(List supportedFormats, String format) {
         // supported formats may be setup using old style formats, first scan
@@ -896,7 +898,7 @@ public class DefaultWebCoverageService111 implements WebCoverageService111 {
             }
 
             for (String method : info.getInterpolationMethods()) {
-                if (interpolation.startsWith(method.toLowerCase())) {
+                if (method.toLowerCase().startsWith(interpolation)) {
                     interpolationSupported = true;
                     break;
                 }
@@ -956,7 +958,7 @@ public class DefaultWebCoverageService111 implements WebCoverageService111 {
     /**
      * 
      * @param date
-     * @return
+     *
      */
     private static Date cvtToGmt(Date date) {
         TimeZone tz = TimeZone.getDefault();

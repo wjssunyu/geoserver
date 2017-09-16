@@ -11,8 +11,6 @@ import javax.jms.ConnectionFactory;
 import javax.jms.Destination;
 import javax.jms.Topic;
 
-import jj2000.j2k.NotImplementedError;
-
 import org.geoserver.cluster.configuration.BrokerConfiguration;
 import org.geoserver.cluster.configuration.ConnectionConfiguration;
 import org.geoserver.cluster.configuration.JMSConfiguration;
@@ -60,17 +58,16 @@ public abstract class JMSFactory implements DisposableBean {
      * Starts an embedded broker
      * 
      * @param configuration
-     * @throws Exception
      */
     public boolean startEmbeddedBroker(Properties configuration) throws Exception {
-        throw new NotImplementedError("This functionality is not implemented");
+        throw new UnsupportedOperationException("This functionality is not implemented");
     }
 
     /**
      * check the status of the embedded broker
      * 
      * @param configuration
-     * @return
+     *
      */
     public boolean isEmbeddedBrokerStarted() {
         return false;
@@ -79,10 +76,9 @@ public abstract class JMSFactory implements DisposableBean {
     /**
      * Stops the embedded broker
      * 
-     * @throws Exception
      */
     public boolean stopEmbeddedBroker() throws Exception {
-        throw new NotImplementedError("This functionality is not implemented");
+        throw new UnsupportedOperationException("This functionality is not implemented");
     }
 
 }

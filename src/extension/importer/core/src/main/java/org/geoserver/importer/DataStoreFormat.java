@@ -1,4 +1,4 @@
-/* (c) 2014 Open Source Geospatial Foundation - all rights reserved
+/* (c) 2014 - 2015 Open Source Geospatial Foundation - all rights reserved
  * (c) 2001 - 2013 OpenPlans
  * This code is licensed under the GPL 2.0 license, available at the root
  * application directory.
@@ -26,7 +26,9 @@ import org.geoserver.catalog.ResourceInfo;
 import org.geoserver.catalog.WorkspaceInfo;
 import org.geotools.data.DataStore;
 import org.geotools.data.DataStoreFactorySpi;
+import org.geotools.data.DataUtilities;
 import org.geotools.data.FeatureReader;
+import org.geotools.data.FeatureSource;
 import org.geotools.data.FileDataStoreFactorySpi;
 import org.geotools.data.Query;
 import org.geotools.data.Transaction;
@@ -81,7 +83,7 @@ public class DataStoreFormat extends VectorFormat {
     }
 
     public DataStoreInfo createStore(ImportData data, WorkspaceInfo workspace, Catalog catalog) throws IOException {
-        Map<String,Serializable> params = createConnectionParameters(data);
+        Map<String,Serializable> params = createConnectionParameters(data, catalog);
         if (params == null) {
             return null;
         }
@@ -89,6 +91,10 @@ public class DataStoreFormat extends VectorFormat {
         CatalogBuilder cb = new CatalogBuilder(catalog);
         cb.setWorkspace(workspace);
         DataStoreInfo store  = cb.buildDataStore(data.getName());
+        DataStoreFactorySpi factory = factory();
+        if (store.getName() == null) {
+            store.setName(factory.getDisplayName());
+        }
         store.setType(factory().getDisplayName());
         store.getConnectionParameters().putAll(params);
         return store;
@@ -119,7 +125,11 @@ public class DataStoreFormat extends VectorFormat {
                     featureType.setNamespace(null);
     
                     SimpleFeatureSource featureSource = dataStore.getFeatureSource(typeName); 
-                    cb.setupBounds(featureType, featureSource);
+                    
+                    //Defer bounds calculation
+                    featureType.setNativeBoundingBox(EMPTY_BOUNDS);
+                    featureType.setLatLonBoundingBox(EMPTY_BOUNDS);
+                    featureType.getMetadata().put("recalculate-bounds", Boolean.TRUE);
     
                     //add attributes
                     CatalogFactory factory = catalog.getFactory();
@@ -162,6 +172,10 @@ public class DataStoreFormat extends VectorFormat {
         }
         return dataStore;
     }
+    
+    public FeatureSource getFeatureSource(ImportData data, ImportTask task) throws IOException {
+        return getDataStore(data, task).getFeatureSource(task.getOriginalLayerName());
+    }
 
     @Override
     public FeatureReader read(ImportData data, ImportTask task) throws IOException {
@@ -191,7 +205,7 @@ public class DataStoreFormat extends VectorFormat {
     public DataStore createDataStore(ImportData data) throws IOException {
         DataStoreFactorySpi dataStoreFactory = factory();
 
-        Map<String,Serializable> params = createConnectionParameters(data);
+        Map<String,Serializable> params = createConnectionParameters(data, null);
         if (params != null && dataStoreFactory.canProcess(params)) {
             DataStore dataStore = dataStoreFactory.createDataStore(params); 
             if (dataStore != null) {
@@ -202,7 +216,7 @@ public class DataStoreFormat extends VectorFormat {
         return null;
     }
 
-    public Map<String,Serializable> createConnectionParameters(ImportData data) throws IOException {
+    public Map<String,Serializable> createConnectionParameters(ImportData data, Catalog catalog) throws IOException {
         //try file based
         if (dataStoreFactory instanceof FileDataStoreFactorySpi) {
             File f = null;
@@ -215,7 +229,7 @@ public class DataStoreFormat extends VectorFormat {
 
             if (f != null) {
                 Map<String,Serializable> map = new HashMap<String, Serializable>();
-                map.put("url", f.toURI().toURL());
+                map.put("url", relativeDataFileURL(DataUtilities.fileToURL(f).toString(), catalog));
                 if (data.getCharsetEncoding() != null) {
                     // @todo this map only work for shapefile
                     map.put("charset",data.getCharsetEncoding());
@@ -238,6 +252,19 @@ public class DataStoreFormat extends VectorFormat {
                 return db.getParameters();
             }
         }
+        
+        //try non-jdbc db
+        Database db = null;
+        if (data instanceof Database) {
+            db = (Database) data;
+        }
+        if (data instanceof Table) {
+            db = ((Table) data).getDatabase();
+        }
+        if (db != null) {
+            return db.getParameters();
+        }
+        
         return null;
     }
 

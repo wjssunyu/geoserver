@@ -1,4 +1,4 @@
-/* (c) 2014 Open Source Geospatial Foundation - all rights reserved
+/* (c) 2014 - 2016 Open Source Geospatial Foundation - all rights reserved
  * (c) 2001 - 2013 OpenPlans
  * This code is licensed under the GPL 2.0 license, available at the root
  * application directory.
@@ -7,14 +7,18 @@ package org.geoserver.security.decorators;
 
 import java.util.List;
 
+import org.geoserver.catalog.AttributionInfo;
 import org.geoserver.catalog.AuthorityURLInfo;
 import org.geoserver.catalog.CatalogVisitor;
+import org.geoserver.catalog.KeywordInfo;
 import org.geoserver.catalog.LayerGroupHelper;
 import org.geoserver.catalog.LayerGroupInfo;
 import org.geoserver.catalog.LayerIdentifierInfo;
 import org.geoserver.catalog.LayerInfo;
+import org.geoserver.catalog.MetadataLinkInfo;
 import org.geoserver.catalog.MetadataMap;
 import org.geoserver.catalog.PublishedInfo;
+import org.geoserver.catalog.PublishedType;
 import org.geoserver.catalog.StyleInfo;
 import org.geoserver.catalog.WorkspaceInfo;
 import org.geoserver.catalog.impl.AbstractDecorator;
@@ -77,6 +81,16 @@ public class DecoratingLayerGroupInfo extends AbstractDecorator<LayerGroupInfo> 
     @Override
     public Mode getMode() {
         return delegate.getMode();
+    }
+    
+    @Override
+    public boolean isQueryDisabled() {
+        return delegate.isQueryDisabled();
+    }
+    
+    @Override
+    public void setQueryDisabled(boolean queryDisabled) {
+        delegate.setQueryDisabled(queryDisabled);
     }
     
     @Override
@@ -151,7 +165,7 @@ public class DecoratingLayerGroupInfo extends AbstractDecorator<LayerGroupInfo> 
     
     @Override
     public void accept(CatalogVisitor visitor) {
-        delegate.accept(visitor);
+        visitor.visit(this);
     }
     
     @Override
@@ -168,5 +182,45 @@ public class DecoratingLayerGroupInfo extends AbstractDecorator<LayerGroupInfo> 
     public String toString() {
         return new StringBuilder(getClass().getSimpleName()).append('[').append(delegate).append(
                 ']').toString();
+    }
+
+    @Override
+    public String getPrefixedName() {
+        return delegate.prefixedName();
+    }
+
+    @Override
+    public PublishedType getType() {
+        return delegate.getType();
+    }
+
+    @Override
+    public AttributionInfo getAttribution() {
+        return delegate.getAttribution();
+    }
+
+    @Override
+    public void setAttribution(AttributionInfo attribution) {
+        delegate.setAttribution(attribution);
+    }
+
+    @Override
+    public List<MetadataLinkInfo> getMetadataLinks() {
+        return delegate.getMetadataLinks();
+    }
+    
+    @Override
+    public boolean equals(Object obj) {
+        return LayerGroupInfo.equals(this, obj);
+    }
+    
+    @Override
+    public int hashCode() {
+        return LayerGroupInfo.hashCode(this);
+    }
+
+    @Override
+    public List<KeywordInfo> getKeywords() {
+        return delegate.getKeywords();
     }
 }

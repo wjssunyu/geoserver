@@ -5,11 +5,10 @@
  */
 package org.geoserver.wps.gs.download;
 
-import java.io.File;
 import java.io.IOException;
 import java.util.ArrayList;
+import java.util.LinkedHashSet;
 import java.util.List;
-import java.util.Set;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 
@@ -19,6 +18,9 @@ import org.geoserver.catalog.ResourceInfo;
 import org.geoserver.catalog.StyleInfo;
 import org.geoserver.platform.GeoServerExtensions;
 import org.geoserver.platform.GeoServerResourceLoader;
+import org.geoserver.platform.resource.Paths;
+import org.geoserver.platform.resource.Resource;
+import org.geoserver.platform.resource.Resources;
 import org.geoserver.wps.ppio.ComplexPPIO;
 import org.geoserver.wps.ppio.LiteralPPIO;
 import org.geoserver.wps.ppio.ProcessParameterIO;
@@ -194,7 +196,7 @@ final class DownloadUtilities {
                 .getUserData();
         // find math transform between the two coordinate reference systems
         MathTransform targetTX = null;
-        if (!CRS.equalsIgnoreMetadata(geometry, crs)) {
+        if (!CRS.equalsIgnoreMetadata(geometryCRS, crs)) {
             if (LOGGER.isLoggable(Level.FINE)) {
                 LOGGER.log(Level.FINE,
                         "Geometry CRS is not equal to the target CRS, we might have to reproject");
@@ -236,11 +238,11 @@ final class DownloadUtilities {
      * @return the underlying SLD {@link File} for the provided GeoSerevr Style.
      * @throws IOException
      */
-    static File findStyle(StyleInfo style) throws IOException {
+    static Resource findStyle(StyleInfo style) throws IOException {
         GeoServerResourceLoader loader = GeoServerExtensions.bean(GeoServerResourceLoader.class);
-        File styleFile = new File(loader.getBaseDirectory().getCanonicalPath(), "/styles/"
-                + style.getFilename()); // GeoserverDataDirectory.findStyleFile(style.getFilename());
-        if (styleFile != null && styleFile.exists() && styleFile.canRead() && styleFile.isFile()) {
+        Resource styleFile = loader.get(Paths.path("styles", style.getFilename())); 
+        if (styleFile != null && styleFile.getType() == Resource.Type.RESOURCE
+                && Resources.canRead(styleFile)) {
             if (LOGGER.isLoggable(Level.FINE)) {
                 LOGGER.log(Level.FINE, "Style " + style.getName() + " found");
             }
@@ -253,11 +255,11 @@ final class DownloadUtilities {
             }
             // the SLD file is not public, most probably it is located under a workspace.
             // lets try to search for the file inside the same layer workspace folder ...
-            File workspaces = new File(loader.getBaseDirectory().getCanonicalPath(), "/workspaces");
-            styleFile = new File(new File(workspaces, style.getWorkspace().getName() + "/styles"),
-                    style.getFilename());
+            styleFile = loader.get(Paths.path("workspaces", style.getWorkspace().getName(),
+                    "styles", style.getFilename()));
 
-            if (!(styleFile.exists() && styleFile.canRead() && styleFile.isFile())) {
+            if (styleFile != null && styleFile.getType() == Resource.Type.RESOURCE
+                    && Resources.canRead(styleFile)) {
                 if (LOGGER.isLoggable(Level.FINE)) {
                     LOGGER.log(Level.FINE,
                             "The style file cannot be found anywhere. We need to skip the SLD file");
@@ -276,32 +278,27 @@ final class DownloadUtilities {
      * @return all the underlying SLD {@link File}s for the provided GeoServer layer.
      * @throws IOException
      */
-    static List<File> collectStyles(LayerInfo layerInfo) throws IOException {
-        final List<File> styles = new ArrayList<File>();
+    static List<Resource> collectStyles(LayerInfo layerInfo) throws IOException {
+        final List<Resource> styleFiles = new ArrayList<Resource>();
 
         if (LOGGER.isLoggable(Level.FINE)) {
             LOGGER.log(Level.FINE, "Searching for default style");
         }
-        // default style
-        final StyleInfo style = layerInfo.getDefaultStyle();
-        File styleFile = findStyle(style);
-        if (styleFile != null) {
-            styles.add(styleFile);
+
+        // collect in a set to avoid duplicates (the styles can contain a copy of the
+        // default style)
+        LinkedHashSet<StyleInfo> styles = new LinkedHashSet<>();
+        styles.add(layerInfo.getDefaultStyle());
+        if (layerInfo.getStyles() != null) {
+            styles.addAll(layerInfo.getStyles());
         }
 
-        // other styles
-        if (LOGGER.isLoggable(Level.FINE)) {
-            LOGGER.log(Level.FINE, "Searching for other styles");
-        }
-        final Set<StyleInfo> otherStyles = layerInfo.getStyles();
-        if (otherStyles != null && !otherStyles.isEmpty()) {
-            for (StyleInfo si : otherStyles) {
-                styleFile = findStyle(si);
-                if (styleFile != null) {
-                    styles.add(styleFile);
-                }
+        for (StyleInfo si : styles) {
+            Resource styleFile = findStyle(si);
+            if (styleFile != null) {
+                styleFiles.add(styleFile);
             }
         }
-        return styles;
+        return styleFiles;
     }
 }

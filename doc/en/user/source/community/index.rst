@@ -1,7 +1,7 @@
 .. _community:
 
-Community
-=========
+Community modules
+=================
 
 This section is devoted to GeoServer community modules. Community modules are considered "pending" in that they are not
 officially part of the GeoServer releases. They are however built along with the
@@ -16,20 +16,34 @@ officially part of the GeoServer releases. They are however built along with the
    :maxdepth: 1
 
    authkey/index
+   oauth2/index
    dds/index
-   netcdf/netcdf
-   python/index
    scripting/index
    spatialite/index
-   netcdf-out/index
    colormap/index
    jdbcconfig/index
-   importer/index
    mbtiles/index
    geopkg/index
-   grib/grib
    rest/index
    pgraster/pgraster
    wps-download/index
    jms-cluster/index
    solr/index
+   sldservice/index
+   rest-upload/index
+   geomesa/index
+   gwc-distributed/index
+   geofence-server/index
+   gdal/index
+   gwc-s3/index
+   gwc-sqlite/index
+   params-extractor/index
+   remote-wps/index
+   jdbcstore/index
+   ncwms/index
+   backuprestore/index
+   onelogin/index
+   wmts-multidimensional/index
+   notification/index
+   opensearch-eo/index
+   s3-geotiff/index

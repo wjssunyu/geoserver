@@ -1,4 +1,4 @@
-/* (c) 2014 Open Source Geospatial Foundation - all rights reserved
+/* (c) 2014 - 2016 Open Source Geospatial Foundation - all rights reserved
  * (c) 2001 - 2014 OpenPlans
  * This code is licensed under the GPL 2.0 license, available at the root
  * application directory.
@@ -13,7 +13,6 @@ import java.util.Set;
 import java.util.TreeSet;
 
 import org.apache.wicket.Component;
-import org.apache.wicket.PageParameters;
 import org.apache.wicket.ajax.AjaxRequestTarget;
 import org.apache.wicket.ajax.markup.html.AjaxLink;
 import org.apache.wicket.ajax.markup.html.form.AjaxSubmitLink;
@@ -21,7 +20,7 @@ import org.apache.wicket.extensions.ajax.markup.html.modal.ModalWindow;
 import org.apache.wicket.markup.html.form.CheckBox;
 import org.apache.wicket.markup.html.form.DropDownChoice;
 import org.apache.wicket.markup.html.form.Form;
-import org.apache.wicket.markup.html.form.IChoiceRenderer;
+import org.apache.wicket.markup.html.form.ChoiceRenderer;
 import org.apache.wicket.markup.html.form.TextArea;
 import org.apache.wicket.markup.html.form.TextField;
 import org.apache.wicket.model.IModel;
@@ -30,10 +29,10 @@ import org.apache.wicket.model.PropertyModel;
 import org.apache.wicket.model.StringResourceModel;
 import org.apache.wicket.model.util.CollectionModel;
 import org.apache.wicket.model.util.ListModel;
-import org.apache.wicket.validation.validator.MinimumValidator;
+import org.apache.wicket.request.mapper.parameter.PageParameters;
 import org.apache.wicket.validation.validator.RangeValidator;
-import org.geoserver.catalog.impl.ModificationProxy;
 import org.geoserver.platform.GeoServerExtensions;
+import org.geoserver.web.data.store.panel.FileModel;
 import org.geoserver.web.services.BaseServiceAdminPage;
 import org.geoserver.web.util.MapModel;
 import org.geoserver.web.wicket.FileExistsValidator;
@@ -48,7 +47,6 @@ import org.geoserver.wms.WMSInfo.WMSInterpolation;
 import org.geoserver.wms.WatermarkInfo.Position;
 import org.geoserver.wms.featureinfo.GetFeatureInfoOutputFormat;
 import org.geoserver.wms.web.publish.LayerAuthoritiesAndIdentifiersPanel;
-import org.geoserver.web.data.store.panel.FileModel;
 
 /**
  * Edits the WMS service details 
@@ -63,6 +61,8 @@ public class WMSAdminPage extends BaseServiceAdminPage<WMSInfo> {
     
     static final List<String> KML_SUPEROVERLAY_MODES = Arrays.asList(new String[] {WMS.KML_SUPEROVERLAY_MODE_AUTO, 
             WMS.KML_SUPEROVERLAY_MODE_RASTER, WMS.KML_SUPEROVERLAY_MODE_OVERVIEW, WMS.KML_SUPEROVERLAY_MODE_HYBRID, WMS.KML_SUPEROVERLAY_MODE_CACHED});
+    
+    static final List<String> DISPOSAL_METHODS = new ArrayList<String>(Arrays.asList(WMS.DISPOSAL_METHODS));
     
     ModalWindow modal;
     MimeTypesFormComponent getMapMimeTypesComponent,getFeatureInfoMimeTypesComponent;
@@ -90,6 +90,10 @@ public class WMSAdminPage extends BaseServiceAdminPage<WMSInfo> {
         // popups support
         form.add(modal = new ModalWindow("modal"));
         
+        // new text field for the title of the root node
+        form.add(new TextField<String>("rootLayerTitle"));
+        form.add(new TextArea<String>("rootLayerAbstract"));
+        
         // authority URLs and Identifiers for the root layer
         LayerAuthoritiesAndIdentifiersPanel authAndIds;
         authAndIds = new LayerAuthoritiesAndIdentifiersPanel("authoritiesAndIds", true, info);
@@ -108,40 +112,54 @@ public class WMSAdminPage extends BaseServiceAdminPage<WMSInfo> {
                     new StringResourceModel("bboxForEachCRSHelp.message",WMSAdminPage.this, null));
             }
         });
+        // advanced projection handling
+        PropertyModel metadataModel = new PropertyModel(info, "metadata");
+        MapModel aphEnabled = defaultedModel(metadataModel, WMS.ADVANCED_PROJECTION_KEY,
+                WMS.ENABLE_ADVANCED_PROJECTION);
+        CheckBox aphEnabledField = new CheckBox("aph.enabled", aphEnabled);
+        form.add(aphEnabledField);
+        MapModel aphWrap = defaultedModel(metadataModel, WMS.MAP_WRAPPING_KEY,
+                WMS.ENABLE_MAP_WRAPPING);
+        CheckBox aphWrapField = new CheckBox("aph.wrap", aphWrap);
+        form.add(aphWrapField);
+
         // general
         form.add(new DropDownChoice("interpolation", Arrays.asList(WMSInfo.WMSInterpolation.values()), new InterpolationRenderer()));
         // resource limits
         TextField<Integer> maxMemory = new TextField<Integer>("maxRequestMemory");
-        maxMemory.add(new MinimumValidator<Integer>(0));
+        maxMemory.add(RangeValidator.minimum(0));
         form.add(maxMemory);
         TextField<Integer> maxTime = new TextField<Integer>("maxRenderingTime");
-        maxTime.add(new MinimumValidator<Integer>(0));
+        maxTime.add(RangeValidator.minimum(0));
         form.add(maxTime);
         TextField<Integer> maxErrors = new TextField<Integer>("maxRenderingErrors");
-        maxErrors.add(new MinimumValidator<Integer>(0));
+        maxErrors.add(RangeValidator.minimum(0));
         form.add(maxErrors);
-    	// watermark
-    	form.add(new CheckBox("watermark.enabled"));
-    	TextField watermarkUrlField = new TextField("watermark.uRL", new FileModel(new PropertyModel<String>(form.getModel(), "watermark.URL")));
-    	watermarkUrlField.add(new FileExistsValidator(true));
-    	watermarkUrlField.setOutputMarkupId(true);
+        // map buffer
+        TextField<Integer> maxBuffer = new TextField<Integer>("maxBuffer");
+        maxBuffer.add(RangeValidator.minimum(0));
+        form.add(maxBuffer);
+        // watermark
+        form.add(new CheckBox("watermark.enabled"));
+        TextField watermarkUrlField = new TextField("watermark.uRL", new FileModel(new PropertyModel<String>(form.getModel(), "watermark.URL")));
+        watermarkUrlField.add(new FileExistsValidator(true));
+        watermarkUrlField.setOutputMarkupId(true);
         form.add(watermarkUrlField);
         form.add(chooserButton("chooser", new ParamResourceModel("chooseWatermark", this).getString(), watermarkUrlField));
-    	TextField<Integer> transparency = new TextField<Integer>("watermark.transparency");
-    	transparency.add(new RangeValidator<Integer>(0,100));
+        TextField<Integer> transparency = new TextField<Integer>("watermark.transparency");
+        transparency.add(new RangeValidator<Integer>(0,100));
         form.add(transparency);
-    	form.add(new DropDownChoice("watermark.position", Arrays.asList(Position.values()), new WatermarkPositionRenderer()));
-    	// svg
-    	PropertyModel metadataModel = new PropertyModel(info, "metadata");
+        form.add(new DropDownChoice("watermark.position", Arrays.asList(Position.values()), new WatermarkPositionRenderer()));
+        // svg
         form.add(new CheckBox("svg.antialias", new MapModel(metadataModel, "svgAntiAlias")));
-    	form.add(new DropDownChoice("svg.producer", new MapModel(metadataModel, "svgRenderer"), SVG_RENDERERS, new SVGMethodRenderer()));
-    	// png compression levels
-    	MapModel pngCompression = defaultedModel(metadataModel, WMS.PNG_COMPRESSION, WMS.PNG_COMPRESSION_DEFAULT);
+        form.add(new DropDownChoice("svg.producer", new MapModel(metadataModel, "svgRenderer"), SVG_RENDERERS, new SVGMethodRenderer()));
+        // png compression levels
+        MapModel pngCompression = defaultedModel(metadataModel, WMS.PNG_COMPRESSION, WMS.PNG_COMPRESSION_DEFAULT);
         TextField<Integer> pngCompressionField = new TextField<Integer>("png.compression", pngCompression, Integer.class);
         pngCompressionField.add(new RangeValidator<Integer>(0, 100));
         form.add(pngCompressionField);
         // jpeg compression levels
-    	MapModel jpegCompression = defaultedModel(metadataModel, WMS.JPEG_COMPRESSION, WMS.JPEG_COMPRESSION_DEFAULT);
+        MapModel jpegCompression = defaultedModel(metadataModel, WMS.JPEG_COMPRESSION, WMS.JPEG_COMPRESSION_DEFAULT);
         TextField<Integer> jpegCompressionField = new TextField<Integer>("jpeg.compression", jpegCompression, Integer.class);
         jpegCompressionField.add(new RangeValidator<Integer>(0,100));
         form.add(jpegCompressionField);
@@ -164,6 +182,9 @@ public class WMSAdminPage extends BaseServiceAdminPage<WMSInfo> {
         TextField<Integer> framesDelayField = new TextField<Integer>("anim.framesdelay", framesDelay, Integer.class);
         framesDelayField.add(new RangeValidator<Integer>(0, Integer.MAX_VALUE));
         form.add(framesDelayField);
+        // DISPOSAL_METHOD
+        MapModel disposalMethod = defaultedModel(metadataModel, WMS.DISPOSAL_METHOD, WMS.DISPOSAL_METHOD_DEFAULT);
+        form.add(new DropDownChoice("anim.disposalmethod", disposalMethod, DISPOSAL_METHODS));
         // LOOP_CONTINUOUSLY
         MapModel loopContinuously = defaultedModel(metadataModel, WMS.LOOP_CONTINUOUSLY, WMS.LOOP_CONTINUOUSLY_DEFAULT);
         CheckBox loopContinuouslyField = new CheckBox("anim.loopcontinuously", loopContinuously);
@@ -215,8 +236,13 @@ public class WMSAdminPage extends BaseServiceAdminPage<WMSInfo> {
                                
         form.add(getFeatureInfoMimeTypesComponent =new MimeTypesFormComponent("getFeatureInfoMimeTypes",
                 new ListModel<String>(getFeatureInfoSelected),new CollectionModel<String>(getFeatureInfoChoices),
-                new PropertyModel<Boolean>(info, "getFeatureInfoMimeTypeCheckingEnabled").getObject()));                                                           
-        
+                new PropertyModel<Boolean>(info, "getFeatureInfoMimeTypeCheckingEnabled").getObject()));
+
+        //dynamicStylingDisabled
+        form.add(new CheckBox("dynamicStyling.disabled",new PropertyModel<Boolean>(info, WMS.DYNAMIC_STYLING_DISABLED)));
+
+        // disable the reprojection of GetFeatureInfo results
+        form.add(new CheckBox("disableFeaturesReproject", new PropertyModel<>(info, WMS.FEATURES_REPROJECTION_DISABLED)));
     }
     
     @Override
@@ -249,7 +275,7 @@ public class WMSAdminPage extends BaseServiceAdminPage<WMSInfo> {
             public void onSubmit(AjaxRequestTarget target, Form form) {
                 File file = null;
                 textField.processInput();
-                String input = (String) textField.getConvertedInput();
+                String input = textField.getConvertedInput();
                 if (input != null && !input.equals("")) {
                     file = new File(input);
                 }
@@ -260,7 +286,7 @@ public class WMSAdminPage extends BaseServiceAdminPage<WMSInfo> {
                       textField.clearInput();
                       textField.setModelObject(file.getAbsolutePath());
 
-                      target.addComponent(textField);
+                      target.add(textField);
                       dialog.close(target);
                     };
                 };
@@ -286,7 +312,7 @@ public class WMSAdminPage extends BaseServiceAdminPage<WMSInfo> {
         return "WMS";
     }
     
-    private class WatermarkPositionRenderer implements  IChoiceRenderer {
+    private class WatermarkPositionRenderer extends ChoiceRenderer {
 
         public Object getDisplayValue(Object object) {
             return new StringResourceModel(((Position) object).name(), WMSAdminPage.this, null).getString();
@@ -298,7 +324,7 @@ public class WMSAdminPage extends BaseServiceAdminPage<WMSInfo> {
         
     }
     
-    private class InterpolationRenderer implements  IChoiceRenderer {
+    private class InterpolationRenderer extends ChoiceRenderer {
 
         public Object getDisplayValue(Object object) {
             return new StringResourceModel(((WMSInterpolation) object).name(), WMSAdminPage.this, null).getString();
@@ -310,7 +336,7 @@ public class WMSAdminPage extends BaseServiceAdminPage<WMSInfo> {
         
     }
     
-    private class SVGMethodRenderer implements  IChoiceRenderer {
+    private class SVGMethodRenderer extends ChoiceRenderer {
 
         public Object getDisplayValue(Object object) {
             return new StringResourceModel("svg." + object, WMSAdminPage.this, null).getString();

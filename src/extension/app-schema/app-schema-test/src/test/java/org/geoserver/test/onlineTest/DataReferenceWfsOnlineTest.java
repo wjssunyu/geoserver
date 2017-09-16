@@ -23,7 +23,7 @@ import org.geotools.data.complex.MappingFeatureSource;
 import org.geotools.data.complex.config.AppSchemaDataAccessConfigurator;
 import org.geotools.feature.FeatureCollection;
 import org.geotools.feature.FeatureIterator;
-import org.geotools.feature.Types;
+import org.geotools.feature.type.Types;
 import org.geotools.filter.FilterFactoryImplNamespaceAware;
 import org.junit.Test;
 import org.opengis.feature.Feature;
@@ -566,8 +566,6 @@ public abstract class DataReferenceWfsOnlineTest extends AbstractDataReferenceWf
 
     /**
      * Test FeatureCollection is encoded with one/many featureMembers element
-     * 
-     * @throws Exception
      */
     @Test
     public void testEncodeFeatureMember() {

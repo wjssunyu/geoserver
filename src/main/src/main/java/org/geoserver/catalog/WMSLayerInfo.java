@@ -17,8 +17,11 @@ public interface WMSLayerInfo extends ResourceInfo {
     /**
      * Returns the raw WMS layer associated to this resource
      * 
-     * @return
+     *
      */
     public Layer getWMSLayer(ProgressListener listener) throws IOException;
 
+    /**
+     * Return the DataURLs associated with this 
+     */
 }

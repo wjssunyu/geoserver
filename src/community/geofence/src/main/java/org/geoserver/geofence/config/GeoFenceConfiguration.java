@@ -32,12 +32,13 @@ import java.util.List;
  */
 public class GeoFenceConfiguration implements Serializable, Cloneable {
     
+    public static final String URL_INTERNAL = "internal:/";
+    
     private static final long serialVersionUID = 3L;
 
     private String servicesUrl;    
     private String instanceName;    
     private boolean allowRemoteAndInlineLayers;    
-    private boolean allowDynamicStyles;
     private boolean grantWriteToWorkspacesToAuthenticatedUsers;
     private boolean useRolesToFilter;
     private String acceptedRoles = "";
@@ -46,7 +47,7 @@ public class GeoFenceConfiguration implements Serializable, Cloneable {
 
     /**
      * Remote GeoFence services url.
-     * @return
+     *
      */
     public String getServicesUrl() {
         return servicesUrl;
@@ -88,29 +89,11 @@ public class GeoFenceConfiguration implements Serializable, Cloneable {
     }
     
     /**
-     * Flag to allow usage of SLD and/or SLD_BODY params in GetMap requests.
-     * 
-     * @param allowDynamicStyles
-     */
-    public void setAllowDynamicStyles(boolean allowDynamicStyles) {
-        this.allowDynamicStyles = allowDynamicStyles;
-    }
-    
-    /**
      * Flag to allow usage of remote and inline layers in SLDs.
-     * @return
+     *
      */
     public boolean isAllowRemoteAndInlineLayers() {
         return allowRemoteAndInlineLayers;
-    }
-
-    /**
-     * Flag to allow usage of SLD and/or SLD_BODY params in GetMap requests.
-     * 
-     * @return
-     */
-    public boolean isAllowDynamicStyles() {
-        return allowDynamicStyles;
     }
 
     /**
@@ -183,8 +166,11 @@ public class GeoFenceConfiguration implements Serializable, Cloneable {
     public List<String> getRoles() {
         return roles;
     }
+        
+    public boolean isInternal() {
+        return servicesUrl.startsWith(URL_INTERNAL);
+    }
 
-    
     /**
      * Creates a copy of the configuration object.
      */

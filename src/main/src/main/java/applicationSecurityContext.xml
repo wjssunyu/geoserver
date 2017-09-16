@@ -39,8 +39,7 @@
   -->
   <bean id="authenticationManager" class="org.geoserver.security.GeoServerSecurityManager"
      depends-on="extensions">
-    <constructor-arg ref="dataDirectory"/>
-    <property name="eraseCredentialsAfterAuthentication" value="false"/>  	  
+    <constructor-arg ref="dataDirectory"/>     
   </bean>
   <alias name="authenticationManager" alias="geoServerSecurityManager"/>
 
@@ -160,5 +159,9 @@
   <bean id="operationCallback"
     class="org.geoserver.security.OperationSecurityCallback">
     <constructor-arg ref="serviceRulesDao"/>
+  </bean>
+  
+  <bean id="bruteForceListener" class="org.geoserver.security.BruteForceListener">
+    <constructor-arg ref="geoServerSecurityManager"/>
   </bean>
 </beans>

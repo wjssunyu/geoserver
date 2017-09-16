@@ -1,4 +1,4 @@
-/* (c) 2014 Open Source Geospatial Foundation - all rights reserved
+/* (c) 2014 - 2015 Open Source Geospatial Foundation - all rights reserved
  * (c) 2001 - 2013 OpenPlans
  * This code is licensed under the GPL 2.0 license, available at the root
  * application directory.
@@ -12,6 +12,7 @@ import java.io.IOException;
 import java.util.ArrayList;
 import java.util.List;
 
+import org.custommonkey.xmlunit.XMLAssert;
 import org.geoserver.catalog.Catalog;
 import org.geoserver.catalog.CoverageInfo;
 import org.geoserver.catalog.CoverageStoreInfo;
@@ -21,6 +22,7 @@ import org.geoserver.catalog.ResourceInfo;
 import org.geoserver.config.GeoServerInfo;
 import org.geoserver.config.ResourceErrorHandling;
 import org.geoserver.data.test.MockData;
+import org.geoserver.data.test.SystemTestData;
 import org.geoserver.wcs.test.WCSTestSupport;
 import org.junit.Before;
 import org.junit.Test;
@@ -29,6 +31,14 @@ import org.w3c.dom.Element;
 import org.w3c.dom.Node;
 
 public class DescribeCoverageTest extends WCSTestSupport {
+
+    @Override
+    protected void onSetUp(SystemTestData testData) throws Exception {
+        super.onSetUp(testData);
+        GeoServerInfo global = getGeoServer().getGlobal();
+        global.getSettings().setProxyBaseUrl("src/test/resources/geoserver");
+        getGeoServer().save(global);
+    }
 
     @Before
     public void revertTasmaniaDem() throws IOException {
@@ -127,6 +137,28 @@ public class DescribeCoverageTest extends WCSTestSupport {
         assertXpathEvaluatesTo("FGDC", "//wcs:metadataLink/@metadataType", dom);
         assertXpathEvaluatesTo("simple", "//wcs:metadataLink/@xlink:type", dom);
         assertXpathEvaluatesTo("http://www.geoserver.org/tasmania/dem.xml", "//wcs:metadataLink/@xlink:href", dom);
+    }
+
+    @Test
+    public void testMetadataLinksTransormToProxyBaseURL() throws Exception {
+        Catalog catalog = getCatalog();
+        CoverageInfo ci = catalog.getCoverageByName(getLayerId(TASMANIA_DEM));
+        MetadataLinkInfo ml = catalog.getFactory().createMetadataLink();
+        ml.setContent("/metadata?key=value");
+        ml.setMetadataType("FGDC");
+        ml.setAbout("http://www.geoserver.org");
+        ci.getMetadataLinks().add(ml);
+        catalog.save(ci);
+
+        String proxyBaseUrl = getGeoServer().getGlobal().getSettings().getProxyBaseUrl();
+        Document dom = getAsDOM(BASEPATH
+                + "?request=DescribeCoverage&service=WCS&version=1.0.0&coverage="
+                + getLayerId(TASMANIA_DEM));
+        checkValidationErrors(dom, WCS10_DESCRIBECOVERAGE_SCHEMA);
+        assertXpathEvaluatesTo("http://www.geoserver.org", "//wcs:metadataLink/@about", dom);
+        assertXpathEvaluatesTo("FGDC", "//wcs:metadataLink/@metadataType", dom);
+        assertXpathEvaluatesTo("simple", "//wcs:metadataLink/@xlink:type", dom);
+        assertXpathEvaluatesTo(proxyBaseUrl + "/metadata?key=value", "//wcs:metadataLink/@xlink:href", dom);
     }
 
     @Test
@@ -419,7 +451,24 @@ public class DescribeCoverageTest extends WCSTestSupport {
         assertXpathEvaluatesTo("2008-11-07T00:00:00.000Z", "//wcs:temporalDomain/wcs:timePeriod[2]/wcs:endPosition", dom);
     }
     
-    
+    @Test
+    public void testMethodNameInjection() throws Exception {
+        Document dom = getAsDOM("wcs?service=WCS&version=1.0.0"
+                + "&request=DescribeCoverage%22%3E%3C/ServiceException%3E%3Cfoo%3EHello,%20World%3C/foo%3E%3CServiceException+foo=%22"
+                + "&coverage=" + getLayerId(TIMERANGES));
+        // print(dom);
+
+        // check we have a valid exception
+        XMLAssert.assertXpathExists("/ServiceExceptionReport/ServiceException", dom);
+        XMLAssert.assertXpathEvaluatesTo("OperationNotSupported",
+                "/ServiceExceptionReport/ServiceException/@code", dom);
+        // the locator has been escaped
+        XMLAssert.assertXpathEvaluatesTo(
+                "DescribeCoverage\"></ServiceException><foo>Hello, World</foo><ServiceException foo=\"",
+                "/ServiceExceptionReport/ServiceException/@locator", dom);
+        // the attack failed and the foo element is not there
+        XMLAssert.assertXpathNotExists("//foo", dom);
+    }
     
     
 }

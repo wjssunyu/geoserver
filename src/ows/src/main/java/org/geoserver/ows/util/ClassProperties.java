@@ -8,7 +8,15 @@ package org.geoserver.ows.util;
 import java.lang.reflect.Method;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Collection;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Set;
+import java.util.TreeMap;
+
+import com.google.common.collect.ImmutableMultimap;
+import com.google.common.collect.Multimap;
+import com.google.common.collect.Multimaps;
 
 /**
  * Provides lookup information about java bean properties in a class.
@@ -18,22 +26,27 @@ import java.util.List;
  *
  */
 public class ClassProperties {
-    private static final List<Method> EMPTY = new ArrayList<Method>(0);
-    List<Method> methods;
-    List<Method> getters;
-    List<Method> setters;
+    private static final Multimap<String, Method> EMPTY = ImmutableMultimap.of();
+
+    private static final Set<String> COMMON_DERIVED_PROPERTIES = new HashSet<>(
+            Arrays.asList("prefixedName"));
+    Multimap<String, Method> methods;
+    Multimap<String, Method> getters;
+    Multimap<String, Method> setters;
     
     public ClassProperties(Class clazz) {
-        methods = Arrays.asList(clazz.getMethods());
-        getters = new ArrayList<Method>();
-        setters = new ArrayList<Method>();
-        for (Method method : methods) {
+        methods = Multimaps.newListMultimap(new TreeMap<>(String.CASE_INSENSITIVE_ORDER), () -> new ArrayList<>());
+        getters = Multimaps.newListMultimap(new TreeMap<>(String.CASE_INSENSITIVE_ORDER), () -> new ArrayList<>());
+        setters = Multimaps.newListMultimap(new TreeMap<>(String.CASE_INSENSITIVE_ORDER), () -> new ArrayList<>());
+        for (Method method : clazz.getMethods()) {
             final String name = method.getName();
+            methods.put(name, method);
             final Class<?>[] params = method.getParameterTypes();
-            if((name.startsWith("get") || name.startsWith("is")) && params.length == 0) {
-                getters.add(method);
+            if ((name.startsWith("get") || name.startsWith("is") || COMMON_DERIVED_PROPERTIES
+                    .contains(name)) && params.length == 0) {
+                getters.put(gp(method), method);
             } else if(name.startsWith("set") && params.length == 1) {
-                setters.add(method);
+                setters.put(name.substring(3), method);
             }
         }
 
@@ -53,10 +66,13 @@ public class ClassProperties {
      * @return A list of string.
      */
     public List<String> properties() {
-        //TODO: factor out check if method is a getter
         ArrayList<String> properties = new ArrayList<String>();
-        for ( Method g : getters ) {
-            properties.add( gp( g ) );
+        for ( String key : getters.keySet() ) {
+            if(key.equals("Resource")) {
+                properties.add(0, key);
+            } else {
+                properties.add(key);
+            }
         }
         return properties;
     }
@@ -64,7 +80,7 @@ public class ClassProperties {
     /**
      * Looks up a setter method by property name.
      * <p>
-     * setter("foo",Integer) -> void setFoo(Integer); 
+     * setter("foo",Integer) --&gt; void setFoo(Integer); 
      * </p>
      * @param property The property.
      * @param type The type of the property.
@@ -72,17 +88,16 @@ public class ClassProperties {
      * @return The setter for the property, or null if it does not exist.
      */
     public Method setter(String property, Class type) {
-        for (Method setter : setters) {
-            if(setter.getName().substring(3).equalsIgnoreCase(property)) {
-                if(type == null) {
+        Collection<Method> methods = setters.get(property);
+        for (Method setter : methods) {
+            if(type == null) {
+                return setter;
+            } else {
+                Class target = setter.getParameterTypes()[0];
+                if(target.isAssignableFrom(type) || 
+                        (target.isPrimitive() && type == wrapper(target)) ||
+                        (type.isPrimitive() && target == wrapper(type))) {
                     return setter;
-                } else {
-                    Class target = setter.getParameterTypes()[0];
-                    if(target.isAssignableFrom(type) || 
-                            (target.isPrimitive() && type == wrapper(target)) ||
-                            (type.isPrimitive() && target == wrapper(type))) {
-                        return setter;
-                    }
                 }
             }
         }
@@ -99,7 +114,7 @@ public class ClassProperties {
     /**
      * Looks up a getter method by its property name.
      * <p>
-     * getter("foo",Integer) -> Integer getFoo(); 
+     * getter("foo",Integer) --&gt; Integer getFoo(); 
      * </p>
      * @param property The property.
      * @param type The type of the property.
@@ -107,8 +122,9 @@ public class ClassProperties {
      * @return The getter for the property, or null if it does not exist.
      */
     public Method getter(String property, Class type) {
-        for (Method getter : getters) {
-            if(gp(getter).equalsIgnoreCase(property)) {
+        Collection<Method> methods = getters.get(property);
+        if(methods != null) {
+            for (Method getter : methods) {
                 if(type == null) {
                     return getter;
                 } else {
@@ -180,17 +196,22 @@ public class ClassProperties {
     * Looks up a method by name.
     */
     public Method method(String name) {
-        for(Method method : methods) {
-            if(method.getName().equalsIgnoreCase(name))
-                return method;
+        Collection<Method> results = methods.get(name);
+        if(results.isEmpty()) {
+            return null;
+        } else {
+            return results.iterator().next();
         }
-        return null;
     }
 
     /**
      * Returns the name of the property corresponding to the getter method.
      */
     String gp( Method getter ) {
-        return getter.getName().substring( getter.getName().startsWith("get") ? 3 : 2 );
+        String name = getter.getName();
+        if (COMMON_DERIVED_PROPERTIES.contains(name)) {
+            return name;
+        }
+        return name.substring(name.startsWith("get") ? 3 : 2);
     }
 }

@@ -1,6 +1,12 @@
+/* (c) 2014 Open Source Geospatial Foundation - all rights reserved
+ * (c) 2014 OpenPlans
+ * This code is licensed under the GPL 2.0 license, available at the root
+ * application directory.
+ */
 package org.geoserver.platform.resource;
 
 import java.io.File;
+import java.io.Serializable;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
@@ -15,16 +21,17 @@ import java.util.List;
  * A listener to path="user_projections/epsg.properties" receive notification on change to the <b>epsg.properties</b> file. This notification will
  * consist of of delta=<code>user_projections/epsg.properties</code></li>
  * <li>Listeners on a directory will be notified on any resource change in the directory. The delta will include any modified directories.
- * 
  * A listener on path="style" is notified on change to <b>style/pophatch.sld</b> and <b>style/icons/city.png</b>. The change to these two files is
  * represented with delta consisting of delta=<code>style,style/icons,style/icons/city.png,style/pophatch.sld</code></li>
- * </ul>
  * <li>Removed resources may be represented in notification, but will have reverted to {@link Resource.Type#UNDEFINED} since the content is no longer
- * present.</li> </ul>
+ * present.</li>
+ * </ul>
  * 
  * @author Jody Garnett (Boundless)
  */
-public class ResourceNotification {
+public class ResourceNotification implements Serializable {
+
+    private static final long serialVersionUID = 1689657047251329584L;
 
     /** Event kind for the purpose of identification */
     public enum Kind {
@@ -38,16 +45,25 @@ public class ResourceNotification {
     /**
      * Event for resource change notification.
      */
-    public static class Event {
+    public static class Event implements Serializable {
+        private static final long serialVersionUID = 2852962095949861322L;
         final String path;
         final Kind kind;
         public Event( String path, Kind kind ){
             this.path = path;
             this.kind = kind;
         }
+        /**
+         * Nature of change
+         * @return nature of change
+         */
         public Kind getKind() {
             return kind;
         }
+        /**
+         * Resource path changed 
+         * @return resource path changed
+         */
         public String getPath() {
             return path;
         }
@@ -133,8 +149,9 @@ public class ResourceNotification {
     /**
      * Notification of a change to a single resource.
      * 
-     * @param store
-     * @param path
+     * @param path resource path changed
+     * @param kind nature of change
+     * @param timestamp local time stamp of change
      */
     ResourceNotification(String path, Kind kind, long timestamp) {
         this.path = path;
@@ -146,9 +163,10 @@ public class ResourceNotification {
     /**
      * Notification changes to directory contents.
      * 
-     * @see #notification(ResourceStore, File, String, List, List, List)
-     * @param store
-     * @param delta
+     * @param path resource path changed
+     * @param kind nature of change
+     * @param timestamp local time stamp of change
+     * @param delta List of changes
      */
     @SuppressWarnings("unchecked")
     public ResourceNotification( String path, Kind kind, long timestamp, List<Event> delta ){
@@ -163,6 +181,10 @@ public class ResourceNotification {
     }
     public String getPath() {
         return path;
+    }
+    
+    public long getTimestamp() {
+        return timestamp;
     }
     /**
      * Paths of changed resources.

@@ -6,6 +6,7 @@
 package org.geoserver.cluster.impl.handlers.catalog;
 
 import java.lang.reflect.InvocationTargetException;
+import java.lang.reflect.Proxy;
 import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.Iterator;
@@ -31,6 +32,8 @@ import org.geoserver.catalog.StyleInfo;
 import org.geoserver.catalog.WMSLayerInfo;
 import org.geoserver.catalog.WMSStoreInfo;
 import org.geoserver.catalog.WorkspaceInfo;
+import org.geoserver.catalog.impl.ModificationProxy;
+import org.geoserver.catalog.impl.StoreInfoImpl;
 import org.geotools.util.logging.Logging;
 
 /**
@@ -88,7 +91,7 @@ public abstract class CatalogUtils {
 		if (info==null || catalog==null)
 			throw new NullArgumentException("Arguments may never be null");
 		
-		final StyleInfo localObject = catalog.getStyleByName(info.getName());
+		final StyleInfo localObject = catalog.getStyleByName(info.getWorkspace(),info.getName());
 		if (localObject != null) {
 			return localObject;
 		}
@@ -145,7 +148,9 @@ public abstract class CatalogUtils {
 		if (info==null || catalog==null)
 			throw new NullArgumentException("Arguments may never be null");
 		
-		final LayerInfo localObject=catalog.getLayerByName(info.getName());
+		
+		// make sure we use the prefixed name to include the workspace
+		final LayerInfo localObject=catalog.getLayerByName(info.prefixedName());
 		
 		if (localObject !=null){
 			return localObject;
@@ -214,7 +219,8 @@ public abstract class CatalogUtils {
 		if (info==null || catalog==null)
 			throw new NullArgumentException("Arguments may never be null");
 		
-		final LayerGroupInfo localObject=catalog.getLayerGroupByName(info.getName());
+		// make sure we use the prefixed name to include the workspace
+		final LayerGroupInfo localObject=catalog.getLayerGroupByName(info.prefixedName());
 		
 		if (localObject !=null){
 			return localObject;
@@ -230,6 +236,26 @@ public abstract class CatalogUtils {
 			if (LOGGER.isLoggable(java.util.logging.Level.SEVERE))
 				LOGGER.severe(e.getLocalizedMessage());
 			throw e;
+		}
+
+		// make sure catalog transient fields are properly initiated
+		List<PublishedInfo> layers = info.getLayers();
+		if (layers != null) {
+			for (PublishedInfo layer : layers) {
+				if (layer instanceof LayerInfo) {
+					ResourceInfo resource = ((LayerInfo) layer).getResource();
+					if (resource == null) {
+						continue;
+					}
+					StoreInfo store = resource.getStore();
+					// we need the non proxy instance
+					store = ModificationProxy.unwrap(store);
+					if (store instanceof StoreInfoImpl) {
+						// setting the catalog
+						((StoreInfoImpl) store).setCatalog(catalog);
+					}
+				}
+			}
 		}
 		
 		// localize layers

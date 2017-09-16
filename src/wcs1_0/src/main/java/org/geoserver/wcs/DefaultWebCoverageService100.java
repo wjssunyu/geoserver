@@ -418,10 +418,10 @@ public class DefaultWebCoverageService100 implements WebCoverageService100 {
                         if (dimInfo instanceof DimensionInfo && dimensions.hasDomain(axisName)) {
                             int valueCount = axis.getSingleValue().size();
                             if (valueCount > 0) {
-                                List<String> dimValues = new ArrayList<String>(valueCount);
+                                List<Object> dimValues = new ArrayList<Object>(valueCount);
                                 for (int s = 0; s < valueCount; s++) {
-                                    dimValues.add(((TypedLiteralType) axis
-                                            .getSingleValue().get(s)).getValue());
+                                    dimValues.addAll(dimensions.convertDimensionValue(axisName,
+                                            ((TypedLiteralType) axis.getSingleValue().get(s)).getValue()));
                                 }
                                 readParameters = CoverageUtils.mergeParameter(parameterDescriptors,
                                         readParameters, dimValues, axisName);
@@ -475,7 +475,7 @@ public class DefaultWebCoverageService100 implements WebCoverageService100 {
             // make sure we work in streaming mode
             //
             // work in streaming fashion when JAI is involved
-            readParameters = WCSUtils.replaceParameter(readParameters, Boolean.FALSE,
+            readParameters = WCSUtils.replaceParameter(readParameters, Boolean.TRUE,
                     AbstractGridFormat.USE_JAI_IMAGEREAD);
             
             //
@@ -573,7 +573,9 @@ public class DefaultWebCoverageService100 implements WebCoverageService100 {
 
             return coverageResults.toArray(new GridCoverage2D[] {});
         } catch (Exception e) {
-        	CoverageCleanerCallback.addCoverages(coverage);
+            if (coverage != null) {
+                CoverageCleanerCallback.addCoverages(coverage);
+            }
             if (e instanceof WcsException) {
                 throw (WcsException) e;
             } else {
@@ -833,7 +835,7 @@ public class DefaultWebCoverageService100 implements WebCoverageService100 {
      * 
      * @param supportedFormats
      * @param format
-     * @return
+     *
      */
     private String getDeclaredFormat(List<String> supportedFormats, String format) {
         // supported formats may be setup using old style formats, first scan

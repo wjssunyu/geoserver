@@ -1,9 +1,32 @@
-/* (c) 2014 Open Source Geospatial Foundation - all rights reserved
+/* (c) 2014 - 2016 Open Source Geospatial Foundation - all rights reserved
  * (c) 2001 - 2013 OpenPlans
  * This code is licensed under the GPL 2.0 license, available at the root
  * application directory.
  */
 package org.geoserver.wfs.response;
+
+import com.google.common.escape.Escaper;
+import com.google.common.escape.Escapers;
+import org.eclipse.xsd.XSDElementDeclaration;
+import org.eclipse.xsd.impl.XSDElementDeclarationImpl;
+import org.geoserver.config.GeoServer;
+import org.geoserver.feature.FlatteningFeatureCollection;
+import org.geoserver.platform.Operation;
+import org.geoserver.platform.ServiceException;
+import org.geoserver.wfs.WFSGetFeatureOutputFormat;
+import org.geoserver.wfs.request.FeatureCollectionResponse;
+import org.geoserver.wfs.request.GetFeatureRequest;
+import org.geotools.data.simple.SimpleFeatureCollection;
+import org.geotools.feature.FeatureCollection;
+import org.geotools.feature.FeatureIterator;
+import org.geotools.feature.type.DateUtil;
+import org.opengis.feature.Feature;
+import org.opengis.feature.Property;
+import org.opengis.feature.simple.SimpleFeature;
+import org.opengis.feature.simple.SimpleFeatureType;
+import org.opengis.feature.type.AttributeDescriptor;
+import org.opengis.feature.type.FeatureType;
+import org.opengis.feature.type.PropertyDescriptor;
 
 import java.io.BufferedWriter;
 import java.io.IOException;
@@ -15,24 +38,6 @@ import java.util.Date;
 import java.util.Iterator;
 import java.util.Locale;
 import java.util.regex.Pattern;
-
-import org.eclipse.xsd.XSDElementDeclaration;
-import org.eclipse.xsd.impl.XSDElementDeclarationImpl;
-import org.geoserver.config.GeoServer;
-import org.geoserver.platform.Operation;
-import org.geoserver.platform.ServiceException;
-import org.geoserver.wfs.WFSGetFeatureOutputFormat;
-import org.geoserver.wfs.request.FeatureCollectionResponse;
-import org.geoserver.wfs.request.GetFeatureRequest;
-import org.geotools.feature.FeatureCollection;
-import org.geotools.feature.FeatureIterator;
-import org.geotools.feature.type.DateUtil;
-import org.opengis.feature.Feature;
-import org.opengis.feature.Property;
-import org.opengis.feature.simple.SimpleFeature;
-import org.opengis.feature.simple.SimpleFeatureType;
-import org.opengis.feature.type.AttributeDescriptor;
-import org.opengis.feature.type.PropertyDescriptor;
 
 /**
  * WFS output format for a GetFeature operation in which the outputFormat is "csv".
@@ -86,15 +91,19 @@ public class CSVOutputFormat extends WFSGetFeatureOutputFormat {
             OutputStream output, Operation getFeature) throws IOException,
             ServiceException {
     	   //write out content here
-        
+
         //create a writer
         BufferedWriter w = new BufferedWriter( new OutputStreamWriter( output, gs.getGlobal().getSettings().getCharset() ) );
                    
         //get the feature collection
         FeatureCollection<?, ?> fc = 
-            featureCollection.getFeature().get(0);           
+        		featureCollection.getFeature().get(0);           
         
         if (fc.getSchema() instanceof SimpleFeatureType) {
+            // Flatten the collection if necessary (the request was a WFS 2.0 joining GetFeature
+            // one, the features contain other SimpleFeature as attributes)
+            fc = FlatteningFeatureCollection.flatten((SimpleFeatureCollection) fc);
+        	
             //write out the header
             SimpleFeatureType ft = (SimpleFeatureType) fc.getSchema();
             w.write("FID,");
@@ -137,6 +146,9 @@ public class CSVOutputFormat extends WFSGetFeatureOutputFormat {
         NumberFormat coordFormatter = NumberFormat.getInstance(Locale.US);
         coordFormatter.setMaximumFractionDigits(getInfo().getGeoServer().getSettings().getNumDecimals());
         coordFormatter.setGroupingUsed(false);
+
+        // prepare the list of formatters
+        AttrFormatter[] formatters = getFormatters(fc.getSchema());
            
         //write out the features
         FeatureIterator<?> i = fc.features();
@@ -151,8 +163,8 @@ public class CSVOutputFormat extends WFSGetFeatureOutputFormat {
                     for ( int j = 0; j < ((SimpleFeature) f).getAttributeCount(); j++ ) {
                         Object att = ((SimpleFeature) f).getAttribute( j );
                         if ( att != null ) {
-                            String value = formatToString(att, coordFormatter);
-                            w.write( prepCSVField(value) );
+                            String value = formatters[j].format(att);
+                            w.write( value );
                         }
                         if ( j < ((SimpleFeature) f).getAttributeCount()-1 ) {
                             w.write(",");    
@@ -202,9 +214,93 @@ public class CSVOutputFormat extends WFSGetFeatureOutputFormat {
            
         w.flush();
     }
-    
+
+    private AttrFormatter[] getFormatters(FeatureType schema) {
+        if(schema instanceof SimpleFeatureType) {
+            // prepare the formatter for numbers
+            NumberFormat coordFormatter = NumberFormat.getInstance(Locale.US);
+            coordFormatter.setMaximumFractionDigits(getInfo().getGeoServer().getSettings().getNumDecimals());
+            coordFormatter.setGroupingUsed(false);
+
+            SimpleFeatureType sft = (SimpleFeatureType) schema;
+            AttrFormatter[] formatters = new AttrFormatter[sft.getAttributeCount()];
+            int i = 0;
+            for (AttributeDescriptor attributeDescriptor : sft.getAttributeDescriptors()) {
+                Class<?> binding = attributeDescriptor.getType().getBinding();
+                if(Number.class.isAssignableFrom(binding)) {
+                    formatters[i] = new NumberFormatter(coordFormatter);
+                } else if (java.sql.Date.class.isAssignableFrom(binding)) {
+                    formatters[i] = sqlDateFormatter;
+                } else if (java.sql.Time.class.isAssignableFrom(binding)) {
+                    formatters[i] = sqlTimeFormatter;
+                } else if (java.util.Date.class.isAssignableFrom(binding)) {
+                    formatters[i] = juDateFormatter;
+                } else {
+                    formatters[i] = defaultFormatter;
+                }
+                i++;
+            }
+            return formatters;
+        } else {
+            return null;
+        }
+    }
+
+    private interface AttrFormatter {
+        String format(Object att);
+    }
+
+    private static class NumberFormatter implements AttrFormatter {
+        private final NumberFormat coordFormatter;
+
+        public NumberFormatter(NumberFormat coordFormatter) {
+            this.coordFormatter = coordFormatter;
+        }
+
+        @Override
+        public String format(Object att) {
+            return coordFormatter.format(att);
+        }
+    }
+
+    private static class JUDateFormatter implements AttrFormatter {
+        @Override
+        public String format(Object att) {
+            return prepCSVField(DateUtil.serializeDateTime((Date) att));
+        }
+    }
+
+    private static AttrFormatter juDateFormatter = new JUDateFormatter();
+
+    private static class SQLDateFormatter implements AttrFormatter {
+        @Override
+        public String format(Object att) {
+            return prepCSVField(DateUtil.serializeSqlDate((java.sql.Date) att));
+        }
+    }
+
+    private static AttrFormatter sqlDateFormatter = new SQLDateFormatter();
+
+    private static class SQLTimeFormatter implements AttrFormatter {
+        @Override
+        public String format(Object att) {
+            return prepCSVField(DateUtil.serializeSqlTime((java.sql.Time) att));
+        }
+    }
+
+    private static AttrFormatter sqlTimeFormatter = new SQLTimeFormatter();
+
+    private static class DefaultFormatter implements AttrFormatter {
+        @Override
+        public String format(Object att) {
+            return prepCSVField(att.toString());
+        }
+    }
+
+    private static AttrFormatter defaultFormatter = new DefaultFormatter();
+
     private String formatToString(Object att, NumberFormat coordFormatter) {
-        String value = null;
+        String value;
         if (att instanceof Number) {
             // don't allow scientific notation in the output, as OpenOffice won't
             // recognize that as a number
@@ -224,16 +320,18 @@ public class CSVOutputFormat extends WFSGetFeatureOutputFormat {
         return value;
     }
 
+    private static Escaper escaper =  Escapers.builder().addEscape('"', "\"\"").build();
+
     /*
      * The CSV "spec" explains that fields with certain properties must be
      * delimited by double quotes, and also that double quotes within fields
      * must be escaped.  This method takes a field and returns one that
      * obeys the CSV spec.
      */    
-    private String prepCSVField(String field){
+    private static String prepCSVField(String field){
     	// "embedded double-quote characters must be represented by a pair of double-quote characters."
-    	String mod = field.replaceAll("\"", "\"\"");
-    	
+        String mod = escaper.escape(field);
+
     	/*
     	 * Enclose string in double quotes if it contains double quotes, commas, or newlines
     	 */

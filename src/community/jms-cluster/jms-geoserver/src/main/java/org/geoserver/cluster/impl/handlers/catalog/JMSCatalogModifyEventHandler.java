@@ -5,6 +5,7 @@
  */
 package org.geoserver.cluster.impl.handlers.catalog;
 
+import java.io.ByteArrayInputStream;
 import java.lang.reflect.InvocationTargetException;
 import java.util.List;
 
@@ -31,6 +32,8 @@ import org.geoserver.cluster.events.ToggleSwitch;
 import org.geoserver.cluster.impl.utils.BeanUtils;
 
 import com.thoughtworks.xstream.XStream;
+import org.geoserver.cluster.server.events.StyleModifyEvent;
+import org.geotools.renderer.style.Style;
 
 /**
  * 
@@ -90,8 +93,7 @@ public class JMSCatalogModifyEventHandler extends JMSCatalogEventHandler {
 
 	/**
 	 * simulate a catalog.save() rebuilding the EventModify proxy object locally
-	 * {@link
-	 * org.geoserver.catalog.impl.DefaultCatalogFacade.saved(CatalogInfo)}
+	 * {@link org.geoserver.catalog.impl.DefaultCatalogFacade#saved(CatalogInfo)}
 	 * 
 	 * @param catalog
 	 * @param modifyEv
@@ -289,6 +291,24 @@ public class JMSCatalogModifyEventHandler extends JMSCatalogEventHandler {
 
 			BeanUtils.smartUpdate(localObject, modifyEv.getPropertyNames(),
 					modifyEv.getNewValues());
+
+			// let's if the style file was provided
+			if (modifyEv instanceof StyleModifyEvent) {
+				StyleModifyEvent styleModifyEvent = (StyleModifyEvent) modifyEv;
+				byte[] fileContent = styleModifyEvent.getFile();
+				if (fileContent != null && fileContent.length != 0) {
+					// update the style file using the old style
+					StyleInfo oldStyle = catalog.getStyleByName(name);
+					try {
+						catalog.getResourcePool().writeStyle(oldStyle, new ByteArrayInputStream(fileContent));
+					} catch (Exception exception) {
+						throw new RuntimeException(String.format(
+								"Error writing style '%s' file.", localObject.getName()), exception);
+					}
+				}
+			}
+
+			// update the style in the catalog
 			catalog.save(localObject);
 
 		} else if (info instanceof WorkspaceInfo) {
@@ -314,9 +334,7 @@ public class JMSCatalogModifyEventHandler extends JMSCatalogEventHandler {
 
 			// change default workspace in the handled catalog
 			/**
-			 * This piece of code was extracted from: {@link
-			 * org.geoserver.catalog.NamespaceWorkspaceConsistencyListener.
-			 * handleModifyEvent(CatalogModifyEvent)}
+			 * This piece of code was extracted from: {@link org.geoserver.catalog.NamespaceWorkspaceConsistencyListener#handleModifyEvent(CatalogModifyEvent)}
 			 */
 			final List<String> properties = modifyEv.getPropertyNames();
 			if (properties.contains("defaultNamespace")) {

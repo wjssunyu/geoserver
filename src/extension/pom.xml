@@ -11,7 +11,7 @@
   <parent>
     <groupId>org.geoserver</groupId>
     <artifactId>geoserver</artifactId>
-    <version>2.7-SNAPSHOT</version>
+    <version>2.12-SNAPSHOT</version>
   </parent>
 
   <groupId>org.geoserver</groupId>
@@ -23,6 +23,11 @@
     <dependency>
       <groupId>org.geoserver</groupId>
       <artifactId>gs-platform</artifactId>
+    </dependency>
+    <dependency>
+      <groupId>javax.servlet</groupId>
+      <artifactId>javax.servlet-api</artifactId>
+      <scope>provided</scope>
     </dependency>
   </dependencies>
 
@@ -170,13 +175,6 @@
     </profile>
 
     <profile>
-      <id>geosearch</id>
-      <modules>
-        <module>geosearch</module>
-      </modules>
-    </profile>
-
-    <profile>
       <id>control-flow</id>
       <modules>
         <module>control-flow</module>
@@ -285,6 +283,48 @@
         <module>importer</module>
       </modules>
     </profile>
+    
+    <profile>
+      <id>grib</id>
+	  <activation>
+        <property><name>grib</name></property>
+      </activation>
+      <modules>
+        <module>grib</module>
+      </modules>
+    </profile>
+
+    <profile>
+      <id>netcdf</id>
+      <activation>
+        <property><name>netcdf</name></property>
+      </activation> 
+      <modules>
+        <module>netcdf</module>
+      </modules>
+    </profile>
+
+    <profile>
+      <id>netcdf-out</id>
+      <activation>
+        <property><name>netcdf-out</name></property>
+      </activation> 
+      <modules>
+        <module>netcdf-out</module>
+      </modules>
+    </profile>
+    <profile>
+      <id>vectortiles</id>
+      <modules>
+        <module>vectortiles</module>
+      </modules>
+    </profile>
+    <profile>
+      <id>ysld</id>
+      <modules>
+        <module>ysld</module>
+      </modules>
+    </profile>
 
     <!-- allExtensions profile, includes all modules -->
     <profile>
@@ -292,7 +332,6 @@
       <modules>
         <module>app-schema</module>
         <module>arcsde</module>
-        <module>geosearch</module>
         <module>h2</module>
         <module>sqlserver</module>
         <module>oracle</module>
@@ -321,6 +360,11 @@
         <module>wcs2_0-eo</module>
         <module>libjpeg-turbo</module>
         <module>importer</module>
+        <module>grib</module>
+        <module>netcdf</module>
+        <module>netcdf-out</module>
+        <module>vectortiles</module>
+        <module>ysld</module>
       </modules>
     </profile>
 
@@ -330,7 +374,6 @@
       <modules>
         <module>app-schema</module>
         <module>arcsde</module>
-        <module>geosearch</module>
         <module>h2</module>
         <module>sqlserver</module>
         <module>oracle</module>
@@ -359,9 +402,12 @@
         <module>wcs2_0-eo</module>
         <module>libjpeg-turbo</module>
         <module>importer</module>
+        <module>grib</module>
+        <module>netcdf</module>
+        <module>netcdf-out</module>
+        <module>vectortiles</module>
+        <module>ysld</module>
       </modules>
     </profile>
-
   </profiles>
-
 </project>

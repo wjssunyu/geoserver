@@ -1,4 +1,4 @@
-/* (c) 2014 Open Source Geospatial Foundation - all rights reserved
+/* (c) 2014 - 2016 Open Source Geospatial Foundation - all rights reserved
  * (c) 2001 - 2013 OpenPlans
  * This code is licensed under the GPL 2.0 license, available at the root
  * application directory.
@@ -8,6 +8,7 @@ package org.geoserver.kml;
 import static junit.framework.Assert.assertNull;
 import static org.custommonkey.xmlunit.XMLAssert.assertXpathEvaluatesTo;
 import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertTrue;
 
 import java.io.ByteArrayInputStream;
@@ -23,6 +24,8 @@ import javax.xml.namespace.QName;
 
 import org.apache.commons.io.FileUtils;
 import org.apache.commons.io.IOUtils;
+import org.custommonkey.xmlunit.XMLUnit;
+import org.custommonkey.xmlunit.XpathEngine;
 import org.geoserver.catalog.Catalog;
 import org.geoserver.catalog.FeatureTypeInfo;
 import org.geoserver.data.test.MockData;
@@ -33,18 +36,27 @@ import org.geoserver.wms.WMSTestSupport;
 import org.geotools.geometry.jts.ReferencedEnvelope;
 import org.geotools.referencing.CRS;
 import org.junit.AfterClass;
+import org.junit.Before;
 import org.junit.BeforeClass;
 import org.junit.Ignore;
 import org.junit.Test;
 import org.w3c.dom.Document;
 
-import com.mockrunner.mock.web.MockHttpServletResponse;
+import org.springframework.mock.web.MockHttpServletResponse;
+import org.w3c.dom.Element;
 
 public class KMLTest extends WMSTestSupport {
     
     public static QName BOULDER = new QName(MockData.SF_URI, "boulder", MockData.SF_PREFIX);
     private static final QName STORM_OBS = new QName(MockData.CITE_URI, "storm_obs", MockData.CITE_PREFIX);
     private static TimeZone oldTimeZone;
+
+    XpathEngine xpath;
+
+    @Before
+    public void setUpXpath() {
+        xpath = XMLUnit.newXpathEngine();
+    }
 
     @Override
     protected void setUpTestData(SystemTestData testData) throws Exception {
@@ -111,10 +123,13 @@ public class KMLTest extends WMSTestSupport {
             "&height=1024&width=1024&bbox=3045967,1206627,3108482,1285209&srs=EPSG:2876" 
         );
         // print(doc);
-        
+
         assertEquals(1, doc.getElementsByTagName("Placemark").getLength());
-        assertXpathEvaluatesTo("-105.22433780246726", "//kml:Document/kml:LookAt/kml:longitude", doc);
-        assertXpathEvaluatesTo("40.008106270709035", "//kml:Document/kml:LookAt/kml:latitude", doc);
+
+        assertEquals(-105.2243,
+            Double.parseDouble(xpath.evaluate("//kml:Document/kml:LookAt/kml:longitude", doc)), 1E-4);
+        assertEquals(40.0081,
+            Double.parseDouble(xpath.evaluate("//kml:Document/kml:LookAt/kml:latitude", doc)), 1E-4);
     }
     
     @Test
@@ -209,7 +224,7 @@ public class KMLTest extends WMSTestSupport {
         assertXpathEvaluatesTo("-0.0042,-6.0E-4 -0.0032,-3.0E-4 -0.0026,-1.0E-4 -0.0014,2.0E-4 2.0E-4,7.0E-4", "//kml:Placemark/kml:LineString/kml:coordinates", doc);
     }
     
-    @Ignore @Test
+    @Test
     public void testTimeTemplate() throws Exception {
         FeatureTypeInfo ftInfo = getCatalog().getResourceByName(getLayerId(MockData.OTHER),
                 FeatureTypeInfo.class);
@@ -226,13 +241,13 @@ public class KMLTest extends WMSTestSupport {
 
             // print(doc);
             assertXpathEvaluatesTo("1", "count(//kml:Placemark)", doc);
-            assertXpathEvaluatesTo("2002-02-12T00:00:00Z", "//kml:Placemark/kml:TimeStamp/kml:when", doc);
+            assertXpathEvaluatesTo("2002-12-02T00:00:00Z", "//kml:Placemark/kml:TimeStamp/kml:when", doc);
         } finally {
             assertTrue(templateFile.delete());
         }
     }
     
-    @Ignore @Test
+    @Test
     public void testTimeInvervalTemplate() throws Exception {
         FeatureTypeInfo ftInfo = getCatalog().getResourceByName(getLayerId(MockData.OTHER),
                 FeatureTypeInfo.class);
@@ -248,8 +263,8 @@ public class KMLTest extends WMSTestSupport {
 
             // print(doc);
             assertXpathEvaluatesTo("1", "count(//kml:Placemark)", doc);
-            assertXpathEvaluatesTo("2002-02-12T00:00:00Z", "//kml:Placemark/kml:TimeSpan/kml:begin", doc);
-            assertXpathEvaluatesTo("2002-02-12T00:00:00Z", "//kml:Placemark/kml:TimeSpan/kml:end", doc);
+            assertXpathEvaluatesTo("2002-12-02T00:00:00Z", "//kml:Placemark/kml:TimeSpan/kml:begin", doc);
+            assertXpathEvaluatesTo("2002-12-02T00:00:00Z", "//kml:Placemark/kml:TimeSpan/kml:end", doc);
         } finally {
             assertTrue(templateFile.delete());
         }
@@ -489,5 +504,33 @@ public class KMLTest extends WMSTestSupport {
         assertEquals("images/layers_1.png", entry.getName());
         zis.closeEntry();
         assertNull(zis.getNextEntry());
+    }
+
+    @Test
+    public void testProjectedGroundOverlayWithPlacemarks() throws Exception {
+        // Tests GEOS-7369, the combination of kmscore = 0, kmplacemark = true, and mode = refresh with data in a 
+        // projected crs results in placemarks being encoded in that projected crs, rather than 4326 that is required
+        // by KML
+        Document dom = getAsDOM("wms?request=getmap&service=wms&version=1.1.1" +
+            "&format=" + KMLMapOutputFormat.MIME_TYPE +
+            "&layers=" + getLayerId(BOULDER) +
+            "&styles=" + MockData.BASIC_POLYGONS.getLocalPart() + "," +
+            "&height=1024&width=1024&bbox=-180,-90,180,90&srs=EPSG:4326&format_options=mode:refresh;kmscore:0;kmplacemark:true");
+
+        // verify that the placemark coordinates are encoded properly
+        assertXpathEvaluatesTo("1", "count(//kml:Folder[1]/kml:GroundOverlay)", dom);
+        assertXpathEvaluatesTo("1", "count(//kml:Folder[1]/kml:Placemark)", dom);
+
+        Element pm = getFirstElementByTagName(dom, "Placemark");
+        assertNotNull(pm);
+        
+        Element point = getFirstElementByTagName(pm, "Point");
+        assertNotNull(point);
+        
+        String[] coords = getFirstElementByTagName(point, "coordinates").getFirstChild().getTextContent().split(",");
+        double[] p = new double[]{Double.parseDouble(coords[0]), Double.parseDouble(coords[1])};
+        
+        assertEquals(-105.2, p[0], 0.1);
+        assertEquals(40.0, p[1], 0.1);
     }
 }

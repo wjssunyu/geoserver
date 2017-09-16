@@ -1,4 +1,4 @@
-/* (c) 2014 Open Source Geospatial Foundation - all rights reserved
+/* (c) 2014 - 2016 Open Source Geospatial Foundation - all rights reserved
  * This code is licensed under the GPL 2.0 license, available at the root
  * application directory.
  */
@@ -20,9 +20,9 @@ import org.apache.wicket.ajax.markup.html.form.AjaxButton;
 import org.apache.wicket.ajax.markup.html.form.AjaxCheckBox;
 import org.apache.wicket.markup.html.basic.Label;
 import org.apache.wicket.markup.html.form.CheckBox;
+import org.apache.wicket.markup.html.form.ChoiceRenderer;
 import org.apache.wicket.markup.html.form.DropDownChoice;
 import org.apache.wicket.markup.html.form.Form;
-import org.apache.wicket.markup.html.form.IChoiceRenderer;
 import org.apache.wicket.markup.html.form.TextField;
 import org.apache.wicket.markup.html.panel.FeedbackPanel;
 import org.apache.wicket.markup.html.panel.Fragment;
@@ -31,13 +31,9 @@ import org.apache.wicket.model.CompoundPropertyModel;
 import org.apache.wicket.model.IModel;
 import org.apache.wicket.model.Model;
 import org.apache.wicket.model.PropertyModel;
-import org.geoserver.catalog.Catalog;
-import org.geoserver.catalog.CatalogBuilder;
 import org.geoserver.catalog.DataStoreInfo;
 import org.geoserver.catalog.FeatureTypeInfo;
-import org.geoserver.catalog.LayerInfo;
 import org.geoserver.catalog.ResourceInfo;
-import org.geoserver.web.GeoServerApplication;
 import org.geoserver.web.wicket.GeoServerDataProvider.Property;
 import org.geoserver.web.wicket.GeoServerTablePanel;
 import org.geoserver.web.wicket.ParamResourceModel;
@@ -70,7 +66,7 @@ public abstract class SolrConfigurationPage extends Panel {
 
     private FeedbackPanel feedbackPanel;
 
-    private static final List GEOMETRY_TYPES = Arrays.asList(Geometry.class,
+    private static final List<Class<?>> GEOMETRY_TYPES = Arrays.asList(Geometry.class,
             GeometryCollection.class, Point.class, MultiPoint.class, LineString.class,
             MultiLineString.class, Polygon.class, MultiPolygon.class);
 
@@ -82,7 +78,8 @@ public abstract class SolrConfigurationPage extends Panel {
      * @see {@link SolrAttribute}
      * 
      */
-    public SolrConfigurationPage(String panelId, final IModel model) {
+    public SolrConfigurationPage(String panelId,
+            final IModel<?> model) {
         super(panelId, model);
 
         ResourceInfo ri = (ResourceInfo) model.getObject();
@@ -93,7 +90,7 @@ public abstract class SolrConfigurationPage extends Panel {
 
         solrurl = (String) connectionparameters.get("solr_url");
 
-        final Form solr_form = new Form("solr_form", new CompoundPropertyModel(this));
+        final Form<SolrConfigurationPage> solr_form = new Form<SolrConfigurationPage>("solr_form", new CompoundPropertyModel<SolrConfigurationPage>(this));
         add(solr_form);
 
         List<SolrAttribute> attributes = fillSolrAttributes((ResourceInfo) model.getObject())
@@ -104,10 +101,15 @@ public abstract class SolrConfigurationPage extends Panel {
         solr_form.add(solrAttributePanel);
 
         AjaxCheckBox checkBox = new AjaxCheckBox("hideEmpty", Model.of(Boolean.TRUE)) {
-            @Override
+            /**
+			 * 
+			 */
+			private static final long serialVersionUID = 8715377219204904531L;
+
+			@Override
             protected void onUpdate(AjaxRequestTarget target) {
                 attProvider.reload((Boolean) this.getDefaultModelObject());
-                target.addComponent(solrAttributePanel);
+                target.add(solrAttributePanel);
             }
         };
 
@@ -115,7 +117,12 @@ public abstract class SolrConfigurationPage extends Panel {
         solr_form.add(checkBox);
 
         solr_form.add(new AjaxButton("solr_save") {
-            protected void onSubmit(AjaxRequestTarget target, Form form) {
+            /**
+			 * 
+			 */
+			private static final long serialVersionUID = 819555072210390051L;
+
+			protected void onSubmit(AjaxRequestTarget target, Form<?> form) {
                 onSave(target);
             }
         });
@@ -130,7 +137,7 @@ public abstract class SolrConfigurationPage extends Panel {
      * Do nothing
      */
     protected void onCancel(AjaxRequestTarget target) {
-        done(target, null, null);
+        done(target, null);
     }
 
     /**
@@ -169,38 +176,17 @@ public abstract class SolrConfigurationPage extends Panel {
             if (!geomSet) {
                 error(new ParamResourceModel("geomEmptyFailure", SolrConfigurationPage.this)
                         .getString());
-            }
-            if (!sridSet) {
+            } else if (!sridSet) {
                 error(new ParamResourceModel("sridEmptyFailure", SolrConfigurationPage.this)
                         .getString());
             }
             if (!pkSet || !geomSet || !sridSet) {
-                target.addComponent(feedbackPanel);
+                target.add(feedbackPanel);
                 return;
             }
-
-            Catalog catalog = ((GeoServerApplication) this.getPage().getApplication()).getCatalog();
-            LayerInfo layerInfo = catalog.getLayerByName(ri.getQualifiedName());
-            FeatureTypeInfo typeInfo;
-            Boolean isNew = true;
-            if (layerInfo == null) {
-                // New
-                DataStoreInfo dsInfo = catalog.getStore(ri.getStore().getId(), DataStoreInfo.class);
-                SolrDataStore ds = (SolrDataStore) dsInfo.getDataStore(null);
-                CatalogBuilder builder = new CatalogBuilder(catalog);
-                builder.setStore(dsInfo);
-                ds.setSolrConfigurations(layerConfiguration);
-                typeInfo = builder.buildFeatureType(ds.getFeatureSource(ri.getQualifiedName()));
-                typeInfo.getMetadata().put(SolrLayerConfiguration.KEY, layerConfiguration);
-                layerInfo = builder.buildLayer(typeInfo);
-            } else {
-                // Update
-                isNew = false;
-                ResourceInfo resourceInfo = layerInfo.getResource();
-                FeatureTypeInfo featureTypeInfo = (FeatureTypeInfo) resourceInfo;
-                featureTypeInfo.getMetadata().put(SolrLayerConfiguration.KEY, layerConfiguration);
-            }
-            done(target, layerInfo, isNew);
+            ri.getMetadata().put(SolrLayerConfiguration.KEY, layerConfiguration);
+            
+            done(target, ri);
 
         } catch (Exception e) {
             LOGGER.log(Level.SEVERE, e.getMessage(), e);
@@ -256,8 +242,13 @@ public abstract class SolrConfigurationPage extends Panel {
             SolrAttributeProvider attProvider) {
         GeoServerTablePanel<SolrAttribute> atts = new GeoServerTablePanel<SolrAttribute>(
                 "solrAttributes", attProvider) {
-            @Override
-            protected Component getComponentForProperty(String id, IModel itemModel,
+            /**
+					 * 
+					 */
+					private static final long serialVersionUID = 7306412054935816724L;
+
+			@Override
+            protected Component getComponentForProperty(String id, IModel<SolrAttribute> itemModel,
                     Property<SolrAttribute> property) {
                 SolrAttribute att = (SolrAttribute) itemModel.getObject();
                 boolean isGeometry = att.getType() != null
@@ -280,7 +271,8 @@ public abstract class SolrConfigurationPage extends Panel {
 
                 } else if (property == SolrAttributeProvider.TYPE && isGeometry) {
                     Fragment f = new Fragment(id, "geometry", SolrConfigurationPage.this);
-                    f.add(new DropDownChoice("geometry", new PropertyModel(itemModel, "type"),
+                    f.add(new DropDownChoice("geometry", 
+                    		new PropertyModel(itemModel, "type"),
                             GEOMETRY_TYPES, new GeometryTypeRenderer()));
                     return f;
                 } else if (property == SolrAttributeProvider.USE) {
@@ -329,13 +321,15 @@ public abstract class SolrConfigurationPage extends Panel {
     /*
      * Render geometry type select
      */
-    private static class GeometryTypeRenderer implements IChoiceRenderer {
+    private static class GeometryTypeRenderer extends ChoiceRenderer<Class<?>> {
 
-        public Object getDisplayValue(Object object) {
-            return ((Class) object).getSimpleName();
+		private static final long serialVersionUID = -6371918467884222834L;
+
+		public Object getDisplayValue(Class<?> object) {
+            return ((Class<?>) object).getSimpleName();
         }
 
-        public String getIdValue(Object object, int index) {
+        public String getIdValue(Class<?> object, int index) {
             return (String) getDisplayValue(object);
         }
 
@@ -354,6 +348,6 @@ public abstract class SolrConfigurationPage extends Panel {
      * @see {@link #onCancel}
      * 
      */
-    abstract void done(AjaxRequestTarget target, LayerInfo layerInfo, Boolean isNew);
+    abstract void done(AjaxRequestTarget target, ResourceInfo layerInfo);
 
 }

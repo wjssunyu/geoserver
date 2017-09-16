@@ -24,7 +24,7 @@ import org.opengis.util.ProgressListener;
 public class MonkeyProcess {
 
     enum CommandType {
-        Exit, SetProgress, Exception
+        Exit, SetProgress, Exception, Wait
     }
 
     static Map<String, BlockingQueue<Command>> commands = new ConcurrentHashMap<String, BlockingQueue<MonkeyProcess.Command>>();
@@ -72,6 +72,10 @@ public class MonkeyProcess {
 
     }
 
+    public static void wait(String id, long wait) throws InterruptedException {
+        getCommandQueue(id).put(new Command(CommandType.Wait, wait));
+    }
+
     public static void exception(String id, ProcessException exception, boolean wait)
             throws InterruptedException {
         getCommandQueue(id).put(new Command(CommandType.Exception, exception));
@@ -84,6 +88,7 @@ public class MonkeyProcess {
     @DescribeResult(name = "result")
     public SimpleFeatureCollection execute(@DescribeParameter(name = "id") String id,
             @DescribeParameter(name = "fc", min = 0) SimpleFeatureCollection fc,
+            @DescribeParameter(name = "extra", min = 0) String extra,
             ProgressListener listener) throws Exception {
         BlockingQueue<Command> queue = getCommandQueue(id);
         while (true) {
@@ -97,6 +102,9 @@ public class MonkeyProcess {
                 float progress = ((Number) command.value).floatValue();
                 listener.progress(progress);
                 listener.setTask(new SimpleInternationalString("Currently at " + progress));
+            } else if (command.type == CommandType.Wait) {
+                long wait = ((Number) command.value).longValue();
+                Thread.sleep(wait);
             } else {
                 ProcessException exception = (ProcessException) command.value;
                 listener.exceptionOccurred(exception);
@@ -105,9 +113,8 @@ public class MonkeyProcess {
         }
     }
 
-    static final ProcessFactory getFactory() {
-        return new AnnotatedBeanProcessFactory(new SimpleInternationalString("Monkey process"),
-                "gs", MonkeyProcess.class);
+    public static final ProcessFactory getFactory() {
+        return new MonkeyProcessFactory();
     }
 
     public static void clearCommands() {
@@ -120,4 +127,13 @@ public class MonkeyProcess {
 
         commands.clear();
     }
+
+    private static class MonkeyProcessFactory extends AnnotatedBeanProcessFactory {
+
+        public MonkeyProcessFactory() {
+            super(new SimpleInternationalString("Monkey process"), "gs", MonkeyProcess.class);
+        }
+
+    }
+
 }

@@ -6,6 +6,9 @@
 
 package org.geoserver.gwc.layer;
 
+import static com.google.common.base.Preconditions.checkArgument;
+import static com.google.common.base.Preconditions.checkState;
+
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
@@ -25,8 +28,6 @@ import org.geowebcache.filter.parameters.ParameterFilter;
 import com.google.common.base.Preconditions;
 import com.google.common.collect.Sets;
 import com.thoughtworks.xstream.annotations.XStreamAlias;
-
-import static com.google.common.base.Preconditions.*;
 
 /**
  * ParameterFilter which allows the styles of the back end layer as legal values. Maintains a set 
@@ -116,7 +117,7 @@ public class StyleParameterFilter extends ParameterFilter {
     
     /**
      * Returns the default style name, or an empty string if set to use the layer specified default
-     * @return
+     *
      */
     public String getRealDefault() {
         // Bypass the special processing this class normally does on the default value
@@ -145,7 +146,7 @@ public class StyleParameterFilter extends ParameterFilter {
     
     /**
      * Get the names of all the styles supported by the layer
-     * @return
+     *
      */
     public Set<String> getLayerStyles() {
         checkInitialized();
@@ -174,10 +175,10 @@ public class StyleParameterFilter extends ParameterFilter {
         availableStyles = new TreeSet<String>();
         
         for(StyleInfo style: layer.getStyles()) {
-            availableStyles.add(style.getName());
+            availableStyles.add(style.prefixedName());
         }
         if(layer.getDefaultStyle() !=null) {
-            defaultStyle = layer.getDefaultStyle().getName();
+            defaultStyle = layer.getDefaultStyle().prefixedName();
         } else {
             defaultStyle = null;
         }

@@ -35,11 +35,39 @@ import org.opengis.filter.FilterFactory;
  */
 public class AdvertisedCatalog extends AbstractFilteredCatalog {
 
-    private LayerGroupVisibilityPolicy layerGroupPolicy = LayerGroupVisibilityPolicy.HIDE_NEVER;
+    private static final long serialVersionUID = 3361872345280114573L;
     
     /**
-     * @param catalog, wrapped Catalog
-     * @throws Exception
+     * Exposes a filtered down view of a layer group
+     *
+     * @author Andrea Aime - GeoSolutions
+     */
+    static final class AdvertisedLayerGroup extends DecoratingLayerGroupInfo {
+        private static final long serialVersionUID = 1037043388874118840L;
+        private List<PublishedInfo> filteredLayers;
+        private List<StyleInfo> filteredStyles;
+
+        public AdvertisedLayerGroup(LayerGroupInfo delegate, List<PublishedInfo> filteredLayers, List<StyleInfo> filteredStyles) {
+            super(delegate);
+            this.filteredLayers = filteredLayers;
+            this.filteredStyles = filteredStyles;
+        }
+
+        @Override
+        public List<PublishedInfo> getLayers() {
+            return new FilteredList<>(filteredLayers, delegate.getLayers());
+        }
+        
+        @Override
+        public List<StyleInfo> getStyles() {
+            return new FilteredList<>(filteredStyles, delegate.getStyles());
+        }
+    }
+    
+    private LayerGroupVisibilityPolicy layerGroupPolicy = LayerGroupVisibilityPolicy.HIDE_NEVER;
+
+    /**
+     * @param catalog wrapped Catalog
      */
     public AdvertisedCatalog(Catalog catalog) {
         super(catalog);
@@ -57,7 +85,7 @@ public class AdvertisedCatalog extends AbstractFilteredCatalog {
      * Hide Layer if Request is GetCapabilities and Layer or its Resource are not advertised.
      * 
      * @param layer
-     * @return
+     *
      */
     private boolean hideLayer(LayerInfo layer) {
         if (!layer.isAdvertised()) {
@@ -71,7 +99,7 @@ public class AdvertisedCatalog extends AbstractFilteredCatalog {
      * Hide Resource if it's not advertised and Request is GetCapabilities.
      * 
      * @param resource
-     * @return
+     *
      */
     private boolean hideResource(ResourceInfo resource) {
         if (!resource.isAdvertised()) {
@@ -129,33 +157,41 @@ public class AdvertisedCatalog extends AbstractFilteredCatalog {
         if (group == null) {
             return null;
         }
+        
+        // do not go and check every layer if the request is not a GetCapabilities
+        Request request = Dispatcher.REQUEST.get();
+        if (request == null || !"GetCapabilities".equalsIgnoreCase(request.getRequest())) {
+            return group;
+        }
 
-        final List<PublishedInfo> filteredLayers = new ArrayList<PublishedInfo>();
-        for (PublishedInfo p : group.getLayers()) {
+        final List<PublishedInfo> layers = group.getLayers();
+        final List<StyleInfo> styles = group.getStyles();
+        final List<PublishedInfo> filteredLayers = new ArrayList<>();
+        final List<StyleInfo> filteredStyles = new ArrayList<>();
+        for (int i = 0; i < layers.size(); i++) {
+            PublishedInfo p = layers.get(i);
+            StyleInfo style = (styles != null && styles.size() > i) ? styles.get(i) : null;
+
             if (p instanceof LayerInfo) {
                 p = checkAccess((LayerInfo) p);
             } else {
-                p = checkAccess((LayerGroupInfo) p);                
+                p = checkAccess((LayerGroupInfo) p);
             }
-            
+
             if (p != null) {
                 filteredLayers.add(p);
+                filteredStyles.add(style);
             }
         }
-        
+
         if (layerGroupPolicy.hideLayerGroup(group, filteredLayers)) {
             return null;
         } else {
-            if (group.getLayers().size() != filteredLayers.size()) {
-                return new DecoratingLayerGroupInfo(group) {
-                    @Override
-                    public List<PublishedInfo> getLayers() {
-                        return filteredLayers;
-                    }
-                };
+            if (!group.getLayers().equals(filteredLayers)) {
+                return new AdvertisedLayerGroup(group, filteredLayers, filteredStyles);
             } else {
                 return group;
-            }            
+            }
         }
     }
 
@@ -275,5 +311,16 @@ public class AdvertisedCatalog extends AbstractFilteredCatalog {
     @Override
     protected <T extends WorkspaceInfo> List<T> filterWorkspaces(List<T> workspaces) {
         return workspaces;
+    }
+    
+    @Override
+    public void save(LayerGroupInfo layerGroup) {
+        if (layerGroup instanceof AdvertisedLayerGroup) {
+            AbstractDecorator<LayerGroupInfo> decorator = (AbstractDecorator<LayerGroupInfo>) layerGroup;
+            LayerGroupInfo unwrapped = decorator.unwrap(LayerGroupInfo.class);
+            delegate.save(unwrapped);
+        } else {
+            delegate.save(layerGroup);
+        }
     }
 }

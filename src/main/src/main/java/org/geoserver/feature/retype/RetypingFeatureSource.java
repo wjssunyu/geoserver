@@ -50,7 +50,7 @@ public class RetypingFeatureSource implements SimpleFeatureSource{
      * @param wrapped
      * @param targetTypeName 
      * @param targetSchema The target schema can have a different name and less attributes than the original one
-     * @return
+     *
      */
     public static SimpleFeatureSource getRetypingSource(SimpleFeatureSource wrapped, SimpleFeatureType targetSchema) throws IOException {
         FeatureTypeMap map = new FeatureTypeMap(wrapped.getSchema(), targetSchema);
@@ -178,10 +178,7 @@ public class RetypingFeatureSource implements SimpleFeatureSource{
         
         //GEOS-3210, if the query specifies a subset of property names we need to take that into 
         // account
-        SimpleFeatureType target = typeMap.getFeatureType();
-        if ( query.getPropertyNames() != Query.ALL_NAMES ) {
-            target = SimpleFeatureTypeBuilder.retype(target, query.getPropertyNames());
-        }
+        SimpleFeatureType target = typeMap.getFeatureType(query);
         return new RetypingFeatureCollection(wrapped.getFeatures(store.retypeQuery(query, typeMap)),
                 target);
     }

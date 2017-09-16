@@ -1,4 +1,4 @@
-/* (c) 2014 Open Source Geospatial Foundation - all rights reserved
+/* (c) 2014 - 2015 Open Source Geospatial Foundation - all rights reserved
  * (c) 2001 - 2013 OpenPlans
  * This code is licensed under the GPL 2.0 license, available at the root
  * application directory.
@@ -22,6 +22,7 @@ import org.geoserver.catalog.CoverageDimensionInfo;
 import org.geoserver.catalog.CoverageInfo;
 import org.geoserver.catalog.LayerInfo;
 import org.geoserver.catalog.MetadataLinkInfo;
+import org.geoserver.catalog.PublishedType;
 import org.geoserver.wcs.WCSInfo;
 import org.geoserver.wcs.kvp.GridType;
 import org.geoserver.wcs.responses.CoverageResponseDelegate;
@@ -36,6 +37,7 @@ import org.geotools.xml.transform.Translator;
 import org.opengis.referencing.FactoryException;
 import org.opengis.referencing.crs.CoordinateReferenceSystem;
 import org.opengis.referencing.operation.Matrix;
+import org.vfny.geoserver.util.ResponseUtils;
 import org.vfny.geoserver.wcs.WcsException;
 import org.vfny.geoserver.wcs.WcsException.WcsExceptionCode;
 import org.xml.sax.ContentHandler;
@@ -145,7 +147,7 @@ public class DescribeCoverageTransformer extends TransformerBase {
 
                 // check the coverage is known
                 LayerInfo layer = catalog.getLayerByName(coverageId);
-				if (layer == null || layer.getType() != LayerInfo.Type.RASTER) {
+				if (layer == null || layer.getType() != PublishedType.RASTER) {
                     throw new WcsException("Could not find the specified coverage: "
                             + coverageId, WcsExceptionCode.InvalidParameterValue, "identifiers");
                 }
@@ -203,7 +205,7 @@ public class DescribeCoverageTransformer extends TransformerBase {
 
             if ((mdl.getContent() != null) && (mdl.getContent() != "")) {
                 attributes.addAttribute("", "xlink:href", "xlink:href", 
-                        "", mdl.getContent());
+                        "", ResponseUtils.proxifyMetadataLink(mdl, request.getBaseUrl()));
             }
 
             if (attributes.getLength() > 0) {
@@ -335,7 +337,7 @@ public class DescribeCoverageTransformer extends TransformerBase {
          * if all sample dimensions have one, otherwise null
          * 
          * @param dimensions
-         * @return
+         *
          */
         protected NumberRange getCoverageRange(List<CoverageDimensionInfo> dimensions) {
             NumberRange range = null;

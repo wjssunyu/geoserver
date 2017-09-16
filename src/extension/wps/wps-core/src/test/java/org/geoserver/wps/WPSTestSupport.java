@@ -1,13 +1,16 @@
-/* (c) 2014 Open Source Geospatial Foundation - all rights reserved
+/* (c) 2014 - 2016 Open Source Geospatial Foundation - all rights reserved
  * (c) 2001 - 2013 OpenPlans
  * This code is licensed under the GPL 2.0 license, available at the root
  * application directory.
  */
 package org.geoserver.wps;
 
-import static org.junit.Assert.*;
+import static org.custommonkey.xmlunit.XMLAssert.assertXpathExists;
+import static org.junit.Assert.fail;
+import it.geosolutions.jaiext.JAIExt;
 
 import java.io.BufferedReader;
+import java.io.ByteArrayInputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.InputStreamReader;
@@ -17,6 +20,7 @@ import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
 import java.util.Properties;
+import java.util.concurrent.Callable;
 
 import javax.xml.namespace.QName;
 import javax.xml.parsers.ParserConfigurationException;
@@ -41,6 +45,8 @@ import org.opengis.coverage.grid.GridCoverage;
 import org.w3c.dom.Document;
 import org.xml.sax.SAXParseException;
 
+import org.springframework.mock.web.MockHttpServletResponse;
+
 public abstract class WPSTestSupport extends GeoServerSystemTestSupport {
 
     protected static Catalog catalog;
@@ -58,7 +64,10 @@ public abstract class WPSTestSupport extends GeoServerSystemTestSupport {
     List<GridCoverage> coverages = new ArrayList<GridCoverage>();
 
     static {
+        JAIExt.initJAIEXT(true, true);
         Processors.addProcessFactory(MonkeyProcess.getFactory());
+        Processors.addProcessFactory(MultiRawProcess.getFactory());
+        Processors.addProcessFactory(MultiOutputEchoProcess.getFactory());
     }
     
     protected void scheduleForDisposal(GridCoverage coverage) {
@@ -180,4 +189,114 @@ public abstract class WPSTestSupport extends GeoServerSystemTestSupport {
         testData.addRasterLayer(ROTATED_CAD, "rotated.tiff", TIFF, props, MockData.class, getCatalog());
         testData.addRasterLayer(WORLD, "world.tiff", TIFF, props, MockData.class, getCatalog());
     }
+
+    /**
+     * Submits an asynch execute request and waits for the final result, which is then returned
+     * 
+     * @param xml
+     * @param maxWaitSeconds
+     *
+     */
+    protected Document submitAsynchronous(String xml, long maxWaitSeconds) throws Exception {
+        Document dom = postAsDOM("wps", xml);
+        assertXpathExists("//wps:ProcessAccepted", dom);
+        XpathEngine xpath = XMLUnit.newXpathEngine();
+        String fullStatusLocation = xpath.evaluate("//wps:ExecuteResponse/@statusLocation", dom);
+        String statusLocation = fullStatusLocation.substring(fullStatusLocation.indexOf('?') - 3);
+        return waitForProcessEnd(statusLocation, maxWaitSeconds);
+    }
+
+    protected Document waitForProcessEnd(String statusLocation, long maxWaitSeconds)
+            throws Exception {
+        XpathEngine xpath = XMLUnit.newXpathEngine();
+        Document dom = null;
+        long start = System.currentTimeMillis();
+        while ((((System.currentTimeMillis() - start) / 1000) < maxWaitSeconds)) {
+            MockHttpServletResponse response = getAsServletResponse(statusLocation);
+            String contents = response.getContentAsString();
+            // super weird... and I believe related to the testing harness... just ignoring it
+            // for the moment.
+            if ("".equals(contents)) {
+                continue;
+            }
+            dom = dom(new ByteArrayInputStream(contents.getBytes()));
+            // print(dom);
+            // are we still waiting for termination?
+            if (xpath.getMatchingNodes("//wps:Status/wps:ProcessAccepted", dom).getLength() > 0
+                    || xpath.getMatchingNodes("//wps:Status/wps:ProcessStarted", dom).getLength() > 0
+                    || xpath.getMatchingNodes("//wps:Status/wps:ProcessQueued", dom).getLength() > 0) {
+                Thread.sleep(100);
+            } else {
+                return dom;
+            }
+        }
+        throw new Exception("Waited for the process to complete more than " + maxWaitSeconds);
+    }
+
+    protected Document waitForProcessEnd(String statusLocation, int maxWaitSeconds)
+            throws Exception {
+        return waitForProcessEnd(statusLocation, maxWaitSeconds, new Callable<Void>() {
+
+            @Override
+            public Void call() throws Exception {
+                Thread.sleep(100);
+                return null;
+            }
+
+        });
+    }
+
+    protected Document waitForProcessEnd(String statusLocation, int maxWaitSeconds,
+            Callable<Void> waitAction) throws Exception {
+        XpathEngine xpath = XMLUnit.newXpathEngine();
+        Document dom = null;
+        long start = System.currentTimeMillis();
+        while ((((System.currentTimeMillis() - start) / 1000) < maxWaitSeconds)) {
+            MockHttpServletResponse response = getAsServletResponse(statusLocation);
+            String contents = response.getContentAsString();
+            // super weird... and I believe related to the testing harness... just ignoring it
+            // for the moment.
+            if ("".equals(contents)) {
+                continue;
+            }
+            dom = dom(new ByteArrayInputStream(contents.getBytes()));
+            // print(dom);
+            // are we still waiting for termination?
+            if (xpath.getMatchingNodes("//wps:Status/wps:ProcessAccepted", dom).getLength() > 0
+                    || xpath.getMatchingNodes("//wps:Status/wps:ProcessStarted", dom).getLength() > 0
+                    || xpath.getMatchingNodes("//wps:Status/wps:ProcessQueued", dom).getLength() > 0) {
+                waitAction.call();
+            } else {
+                return dom;
+            }
+        }
+        throw new Exception("Waited for the process to complete more than " + maxWaitSeconds);
+    }
+
+    protected Document waitForProcessStart(String statusLocation, long maxWaitSeconds)
+            throws Exception {
+        XpathEngine xpath = XMLUnit.newXpathEngine();
+        Document dom = null;
+        long start = System.currentTimeMillis();
+        while ((((System.currentTimeMillis() - start) / 1000) < maxWaitSeconds)) {
+            MockHttpServletResponse response = getAsServletResponse(statusLocation);
+            String contents = response.getContentAsString();
+            // super weird... and I believe related to the testing harness... just ignoring it
+            // for the moment.
+            if ("".equals(contents)) {
+                continue;
+            }
+            dom = dom(new ByteArrayInputStream(contents.getBytes()));
+            // print(dom);
+            // are we still waiting for termination?
+            if (xpath.getMatchingNodes("//wps:Status/wps:ProcessAccepted", dom).getLength() > 0
+                    || xpath.getMatchingNodes("//wps:Status/wps:ProcessQueued", dom).getLength() > 0) {
+                Thread.sleep(100);
+            } else {
+                return dom;
+            }
+        }
+        throw new Exception("Waited for the process to complete more than " + maxWaitSeconds);
+    }
+
 }

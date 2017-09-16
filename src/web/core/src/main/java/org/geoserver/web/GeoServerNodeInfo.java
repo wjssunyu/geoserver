@@ -6,6 +6,7 @@
 package org.geoserver.web;
 
 import org.apache.wicket.markup.html.WebMarkupContainer;
+import org.geoserver.GeoServerNodeData;
 
 /**
  * Provides identification and styling for the GeoServer id element showing right below the
@@ -20,9 +21,18 @@ interface GeoServerNodeInfo {
      * The node id, displayed as a label in the GUI. If null is returned, the element will be
      * hidden.
      * 
-     * @return
+     *
      */
-    String getId();
+    default String getId() {
+        return getData().getId();
+    }
+
+    /**
+     * Returns the data object containing the node info. 
+     */
+    default GeoServerNodeData getData() {
+        return GeoServerNodeData.createFromEnvironment();
+    }
 
     /**
      * Allows customization of the label container, in particular, its style and visibility, but
@@ -31,7 +41,7 @@ interface GeoServerNodeInfo {
      * {@link DefaultGeoServerNodeInfo} for the default implementation of the visibility logic
      * 
      * @param parent
-     * @return
+     *
      */
     void customize(WebMarkupContainer nodeInfoContainer);
 }

@@ -1,4 +1,4 @@
-/* (c) 2014 Open Source Geospatial Foundation - all rights reserved
+/* (c) 2014 - 2016 Open Source Geospatial Foundation - all rights reserved
  * (c) 2001 - 2013 OpenPlans
  * This code is licensed under the GPL 2.0 license, available at the root
  * application directory.
@@ -1135,7 +1135,7 @@ public abstract class CapabilitiesTransformer extends TransformerBase {
                 element( "ows:AdministrativeArea", contact.getAddressState() );
                 element( "ows:PostalCode", contact.getAddressPostalCode() );
                 element( "ows:Country", contact.getAddressCountry() );
-                element( "ows:ElectronicMailAddress", contact.getAddressElectronicMailAddress() );
+                element( "ows:ElectronicMailAddress", contact.getContactEmail() );
 
                 /* Currently disregarding the maxOccurs for DeliveryPoint and ElectronicMailAddress,
                  * because this can create issues with the XML serializer. */
@@ -1629,9 +1629,11 @@ public abstract class CapabilitiesTransformer extends TransformerBase {
                             + VALID_LINKS_METADATATYPES);
                     return;
                 }
-                
+                if ((link.getContent() == null) || link.getContent().isEmpty()) {
+                    return;
+                }
                 AttributesImpl mtAtts = attributes("type", metadataType, "format", format);
-                element("MetadataURL", link.getContent(), mtAtts);
+                element("MetadataURL", ResponseUtils.proxifyMetadataLink(link, request.getBaseUrl()), mtAtts);
             }
             
             /**
@@ -1887,7 +1889,7 @@ public abstract class CapabilitiesTransformer extends TransformerBase {
                 
                 
                 if (get) {
-                    element("ows:Get", null, attributes(new String[] { "xlink:href", serviceURL + "?"}));
+                    element("ows:Get", null, attributes(new String[] { "xlink:href", serviceURL}));
                 }
 
                 if (post) {
@@ -1907,7 +1909,7 @@ public abstract class CapabilitiesTransformer extends TransformerBase {
         /** wfs namespace uri */
         static String WFS20_URI = "http://www.opengis.net/wfs/2.0";
         /** gml 3.2 mime type */
-        protected static final String GML32_FORMAT = "text/xml; subtype=gml/3.2";
+        protected static final String GML32_FORMAT = "application/gml+xml; version=3.2";
         
         /** filter namespace + prefix */
         protected static final String FES_PREFIX = "fes";
@@ -1965,7 +1967,10 @@ public abstract class CapabilitiesTransformer extends TransformerBase {
                         protected void metadataLink(MetadataLinkInfo link) {
                             // WFS 2.0 metadata url is different than the v1.1 one, indeed it just
                             // has an href
-                            AttributesImpl mtAtts = attributes("xlink:href", link.getContent());
+                            if ((link.getContent() == null) || link.getContent().isEmpty()) {
+                                return;
+                            }
+                            AttributesImpl mtAtts = attributes("xlink:href", ResponseUtils.proxifyMetadataLink(link, request.getBaseUrl()));
                             start("MetadataURL", mtAtts);
                             end("MetadataURL");
                         }

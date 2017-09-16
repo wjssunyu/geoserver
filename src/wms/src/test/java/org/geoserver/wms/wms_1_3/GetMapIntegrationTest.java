@@ -1,26 +1,20 @@
-/* (c) 2014 Open Source Geospatial Foundation - all rights reserved
+/* (c) 2014 - 2016 Open Source Geospatial Foundation - all rights reserved
  * (c) 2001 - 2014 OpenPlans
  * This code is licensed under the GPL 2.0 license, available at the root
  * application directory.
  */
 package org.geoserver.wms.wms_1_3;
 
-import static org.junit.Assert.assertEquals;
-import static org.junit.Assert.assertTrue;
-
-import java.awt.Color;
-import java.awt.image.BufferedImage;
-import java.net.URL;
-import java.nio.charset.Charset;
-import java.util.Collections;
-
-import javax.xml.namespace.QName;
-
 import org.geoserver.catalog.Catalog;
+import org.geoserver.catalog.CoverageInfo;
 import org.geoserver.catalog.LayerGroupInfo;
+import org.geoserver.catalog.StyleGenerator;
+import org.geoserver.catalog.StyleInfo;
+import org.geoserver.catalog.Styles;
 import org.geoserver.config.GeoServerInfo;
 import org.geoserver.data.test.MockData;
 import org.geoserver.data.test.SystemTestData;
+import org.geoserver.data.test.TestData;
 import org.geoserver.wms.GetMapOutputFormat;
 import org.geoserver.wms.WMS;
 import org.geoserver.wms.WMSInfo;
@@ -28,10 +22,22 @@ import org.geoserver.wms.WMSTestSupport;
 import org.geoserver.wms.map.OpenLayersMapOutputFormat;
 import org.geoserver.wms.map.RenderedImageMapOutputFormat;
 import org.junit.Test;
+import org.springframework.mock.web.MockHttpServletResponse;
 import org.w3c.dom.Document;
 import org.w3c.dom.Element;
 
-import com.mockrunner.mock.web.MockHttpServletResponse;
+import javax.imageio.ImageIO;
+import javax.xml.namespace.QName;
+import java.awt.Color;
+import java.awt.image.BufferedImage;
+import java.io.ByteArrayInputStream;
+import java.net.URL;
+import java.nio.charset.Charset;
+import java.util.Collections;
+
+import static org.geoserver.data.test.MockData.WORLD;
+import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertTrue;
 
 public class GetMapIntegrationTest extends WMSTestSupport {
 
@@ -264,6 +270,26 @@ public class GetMapIntegrationTest extends WMSTestSupport {
                 + STATES_SLD11.replaceAll("=", "%3D") + "&VALIDATESCHEMA=true");
         checkImage(response);
     }
+
+    @Test
+    public void testSldGenerateRaster() throws Exception {
+        Catalog catalog = getCatalog();
+        StyleGenerator generator = new StyleGenerator(catalog);
+        CoverageInfo coverage = catalog.getCoverageByName(WORLD.getLocalPart());
+
+        StyleInfo style = generator.createStyle(Styles.handler("SLD"), coverage);
+        catalog.add(style);
+
+        MockHttpServletResponse response = getAsServletResponse("wms?bbox=-120,35,-100,45" +
+                "&styles=" + style.getName() + "&layers=" + coverage.getName() +
+                "&format=image/png&request=GetMap&width=80&height=40&srs=EPSG:4326");
+
+        BufferedImage image = ImageIO.read(new ByteArrayInputStream(response.getContentAsByteArray()));
+        Color rgb = new Color(image.getRGB(5,5));
+        assertEquals(rgb, new Color(170,170,170));
+
+        checkImage(response);
+    }
     
     
     @Test    
@@ -348,11 +374,20 @@ public class GetMapIntegrationTest extends WMSTestSupport {
         } finally {
             catalog.remove(group);
         }
-    }   
+    }
+
+    @Test
+    public void testWorkspaceQualifiedNoLayersError() throws Exception {
+        Document dom = getAsDOM("sf/wms?bbox=" + bbox + "&styles="
+                + "&layers=" + "&format=image/png" + "&request=GetMap" + "&width=550"
+                + "&height=250" + "&srs=EPSG:4326", Charset.defaultCharset().displayName());
+        assertEquals("ServiceExceptionReport", dom.getDocumentElement().getNodeName());
+        assertTrue(dom.getDocumentElement().getTextContent().contains("No LAYERS has been requested"));
+    }
     
     @Test
     public void testSldExternalEntities() throws Exception {
-        URL sldUrl = GetMapIntegrationTest.class.getResource("../externalEntities.sld");
+        URL sldUrl = TestData.class.getResource("externalEntities.sld");
         String url = "wms?bbox=" + bbox + "&styles="
                 + "&layers=" + layers + "&Format=image/png" + "&request=GetMap" + "&width=550"
                 + "&height=250" + "&srs=EPSG:4326" + "&sld=" + sldUrl.toString();
@@ -369,7 +404,7 @@ public class GetMapIntegrationTest extends WMSTestSupport {
             // if the file is found, its content will be used to replace the entity
             // if the file is not found the parser will throw a FileNotFoundException
             String response = getAsString(url);            
-            assertTrue(response.indexOf("java.io.FileNotFoundException") > -1);
+            assertTrue(response.indexOf("Error while getting SLD.") > -1);
             
             // disable entities
             geoserverInfo.setXmlExternalEntitiesEnabled(false);
@@ -378,7 +413,7 @@ public class GetMapIntegrationTest extends WMSTestSupport {
             // if entities evaluation is disabled
             // the parser will throw a MalformedURLException when it finds an entity
             response = getAsString(url);
-            assertTrue(response.indexOf("java.net.MalformedURLException") > -1);
+            assertTrue(response.indexOf("Entity resolution disallowed") > -1);
 
             // try default: disabled entities
             geoserverInfo.setXmlExternalEntitiesEnabled(null);
@@ -387,7 +422,7 @@ public class GetMapIntegrationTest extends WMSTestSupport {
             // if entities evaluation is disabled
             // the parser will throw a MalformedURLException when it finds an entity
             response = getAsString(url);
-            assertTrue(response.indexOf("java.net.MalformedURLException") > -1);            
+            assertTrue(response.indexOf("Entity resolution disallowed") > -1);
             
         } finally {
             // default

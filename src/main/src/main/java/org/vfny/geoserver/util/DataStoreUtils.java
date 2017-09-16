@@ -59,7 +59,7 @@ public abstract class DataStoreUtils {
      * eventually wraps it into a renaming wrapper so that feature type
      * names are good ones from the wfs point of view (that is, no ":" in the type names)
      * @param params
-     * @return
+     *
      * @deprecated use {@link #getDataAccess(Map)}
      */
     public static DataStore getDataStore(Map params) throws IOException {
@@ -77,7 +77,7 @@ public abstract class DataStoreUtils {
      * view (that is, no ":" in the type names)
      * 
      * @param params
-     * @return
+     *
      */
     public static DataAccess<? extends FeatureType, ? extends Feature> getDataAccess(Map params)
             throws IOException {
@@ -93,10 +93,16 @@ public abstract class DataStoreUtils {
         }
 
         if (store instanceof DataStore) {
-            String[] names = ((DataStore) store).getTypeNames();
-            for (int i = 0; i < names.length; i++) {
-                if (names[i].indexOf(":") >= 0)
-                    return new RetypingDataStore((DataStore) store);
+            try {
+                String[] names = ((DataStore) store).getTypeNames();
+                for (int i = 0; i < names.length; i++) {
+                    if (names[i].indexOf(":") >= 0)
+                        return new RetypingDataStore((DataStore) store);
+                }
+            } catch(IOException | RuntimeException e) {
+                // in case of exception computing the feature types make sure we clean up the store
+                store.dispose();
+                throw e;
             }
         }
         return store;
@@ -141,7 +147,7 @@ public abstract class DataStoreUtils {
      *
      * @param params
      *
-     * @return
+     *
      */
     public static DataAccessFactory aquireFactory(Map params) {
         for (Iterator i = getAvailableDataStoreFactories().iterator(); i.hasNext();) {
@@ -176,7 +182,7 @@ public abstract class DataStoreUtils {
      *
      * @param diplayName
      *
-     * @return
+     *
      */
     public static DataAccessFactory aquireFactory(String displayName) {
         if(displayName == null) {
@@ -331,7 +337,7 @@ public abstract class DataStoreUtils {
     }
 
     /**
-     * @deprecated use {@link org.geoserver.feature.FeatureSourceUtils#
+     * @deprecated use {@link org.geoserver.feature.FeatureSourceUtils#getBoundingBoxEnvelope(FeatureSource)}
      */
     public static Envelope getBoundingBoxEnvelope(FeatureSource<? extends FeatureType, ? extends Feature> fs)
         throws IOException {

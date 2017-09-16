@@ -181,7 +181,7 @@ public class DescribeEOCoverageSetTransformer extends TransformerBase {
          * Returns the max number of coverages to return, if any (null otherwise)
          * 
          * @param dcs
-         * @return
+         *
          */
         private Integer getMaxCoverages(DescribeEOCoverageSetType dcs) {
             if (dcs.getCount() > 0) {
@@ -506,8 +506,9 @@ public class DescribeEOCoverageSetTransformer extends TransformerBase {
         private DateRange parseDateRange(DimensionTrimType trim) {
             DatatypeConverterImpl xmlTimeConverter = DatatypeConverterImpl.getInstance();
             try {
-                final Date low = xmlTimeConverter.parseDateTime(trim.getTrimLow()).getTime();
-                final Date high = xmlTimeConverter.parseDateTime(trim.getTrimHigh()).getTime();
+                // Use the lenient parameter
+                final Date low = xmlTimeConverter.parseDateTime(trim.getTrimLow(), true).getTime();
+                final Date high = xmlTimeConverter.parseDateTime(trim.getTrimHigh(), true).getTime();
 
                 // low > high???
                 if (low.compareTo(high) > 0) {

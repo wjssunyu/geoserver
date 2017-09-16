@@ -1,3 +1,8 @@
+/* (c) 2014-2015 Open Source Geospatial Foundation - all rights reserved
+ * (c) 2014 OpenPlans
+ * This code is licensed under the GPL 2.0 license, available at the root
+ * application directory.
+ */
 package org.geoserver.platform.resource;
 
 import java.io.File;
@@ -14,6 +19,8 @@ import java.util.logging.Level;
 import java.util.logging.Logger;
 
 import org.geoserver.platform.resource.ResourceNotification.Kind;
+import org.springframework.beans.factory.DisposableBean;
+import org.springframework.scheduling.concurrent.CustomizableThreadFactory;
 
 
 /**
@@ -26,7 +33,13 @@ import org.geoserver.platform.resource.ResourceNotification.Kind;
  * 
  * @author Jody Garnett (Boundless)
  */
-public class FileSystemWatcher {
+public class FileSystemWatcher implements ResourceNotificationDispatcher, DisposableBean {
+    
+    interface FileExtractor {
+        public File getFile(String path);
+    }
+    
+    
     /**
      * Change to file system
      */
@@ -49,7 +62,6 @@ public class FileSystemWatcher {
             this.modified = null;
         }
 
-        @SuppressWarnings("unchecked")
         public Delta(File context, Kind kind, List<File> created, List<File> removed,
                 List<File> modified) {
             this.context = context;
@@ -91,7 +103,7 @@ public class FileSystemWatcher {
             this.file = file;
             this.path = path;
             this.exsists = file.exists();
-            this.last = exsists ? file.lastModified() : 0;            
+            this.last = exsists ? file.lastModified() : 0;
             if (file.isDirectory()) {
                 contents = file.listFiles();
             }
@@ -268,7 +280,7 @@ public class FileSystemWatcher {
 
     private ScheduledExecutorService pool;
 
-    //private FileSystemResourceStore store;
+    private FileExtractor fileExtractor;
 
     protected long lastmodified;
 
@@ -319,15 +331,31 @@ public class FileSystemWatcher {
 
     private long delay = 10;
 
+    private static CustomizableThreadFactory tFactory;
+    static {
+        tFactory = new CustomizableThreadFactory("FileSystemWatcher-");
+        tFactory.setDaemon(true);
+    }
+    
     /**
      * FileSystemWatcher used to track file changes.
      * <p>
      * Internally a single threaded schedule executor is used to monitor files.
      */
-    FileSystemWatcher() {
-        this.pool = Executors.newSingleThreadScheduledExecutor();
+    FileSystemWatcher(FileExtractor fileExtractor) {
+        this.pool = Executors.newSingleThreadScheduledExecutor(tFactory);
+        this.fileExtractor = fileExtractor;
     }
     
+    FileSystemWatcher() {
+        this (new FileExtractor() {
+            @Override
+            public File getFile(String path) {
+                return new File(path.replace('/', File.separatorChar));
+            }            
+        });
+    }
+
     private Watch watch(File file, String path ){
         if( file == null || path == null ){
             return null;
@@ -339,7 +367,8 @@ public class FileSystemWatcher {
         }
         return null; // not found
     }
-    public synchronized void addListener(File file, String path, ResourceListener listener) {
+    public synchronized void addListener(String path, ResourceListener listener) {
+        File file = fileExtractor.getFile(path);
         if( file == null ){
             throw new NullPointerException("File to watch is required");
         }
@@ -357,7 +386,8 @@ public class FileSystemWatcher {
         watch.addListener(listener);
     }
 
-    public synchronized void removeListener(File file, String path, ResourceListener listener) {
+    public synchronized boolean removeListener(String path, ResourceListener listener) {
+        File file = fileExtractor.getFile(path);
         if( file == null ){
             throw new NullPointerException("File to watch is required");
         }
@@ -378,6 +408,7 @@ public class FileSystemWatcher {
                 monitor = null;
             }
         }
+        return removed;
     }
 
     /**
@@ -393,5 +424,15 @@ public class FileSystemWatcher {
             monitor.cancel(false);
             monitor = pool.scheduleWithFixedDelay(sync, delay, delay, unit);
         }
+    }
+
+    @Override
+    public void destroy() throws Exception {
+        pool.shutdown();
+    }
+
+    @Override
+    public void changed(ResourceNotification notification) {
+        throw new UnsupportedOperationException();        
     }
 }

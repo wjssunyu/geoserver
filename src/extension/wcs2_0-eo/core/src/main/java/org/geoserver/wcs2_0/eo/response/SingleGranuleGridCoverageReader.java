@@ -1,9 +1,11 @@
-/* (c) 2014 Open Source Geospatial Foundation - all rights reserved
+/* (c) 2014-2015 Open Source Geospatial Foundation - all rights reserved
  * (c) 2001 - 2013 OpenPlans
  * This code is licensed under the GPL 2.0 license, available at the root
  * application directory.
  */
 package org.geoserver.wcs2_0.eo.response;
+
+import it.geosolutions.imageio.maskband.DatasetLayout;
 
 import java.io.IOException;
 import java.util.Date;
@@ -21,6 +23,8 @@ import org.geotools.coverage.grid.io.GranuleSource;
 import org.geotools.coverage.grid.io.HarvestedSource;
 import org.geotools.coverage.grid.io.OverviewPolicy;
 import org.geotools.coverage.grid.io.StructuredGridCoverage2DReader;
+import org.geotools.data.ResourceInfo;
+import org.geotools.data.ServiceInfo;
 import org.geotools.factory.Hints;
 import org.geotools.geometry.GeneralEnvelope;
 import org.geotools.geometry.jts.ReferencedEnvelope;
@@ -285,4 +289,23 @@ public class SingleGranuleGridCoverageReader implements StructuredGridCoverage2D
         reader.delete(deleteData);
     }
 
+    @Override
+    public DatasetLayout getDatasetLayout() {
+        return reader.getDatasetLayout();
+    }
+
+    @Override
+    public DatasetLayout getDatasetLayout(String coverageName) {
+        return reader.getDatasetLayout(coverageName);
+    }
+
+    @Override
+    public ServiceInfo getInfo() {
+        return reader.getInfo();
+    }
+
+    @Override
+    public ResourceInfo getInfo(String coverageName) {
+        return reader.getInfo(coverageName);
+    }
 }

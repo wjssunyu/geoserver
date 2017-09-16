@@ -1,4 +1,4 @@
-/* (c) 2014 Open Source Geospatial Foundation - all rights reserved
+/* (c) 2014 - 2015 Open Source Geospatial Foundation - all rights reserved
  * (c) 2001 - 2013 OpenPlans
  * This code is licensed under the GPL 2.0 license, available at the root
  * application directory.
@@ -65,7 +65,7 @@ public class CatalogPropertyAccessor implements PropertyAccessor {
     @SuppressWarnings("unchecked")
     @Override
     public <T> T get(Object object, String xpath, Class<T> target) throws IllegalArgumentException {
-        Object value = getProperty((Info) object, xpath);
+        Object value = getProperty(object, xpath);
         T result;
         if (null != target && null != value) {
             result = Converters.convert(value, target);
@@ -94,7 +94,7 @@ public class CatalogPropertyAccessor implements PropertyAccessor {
 
     /**
      * @param input
-     * @return
+     *
      */
     @SuppressWarnings("unchecked")
     private List<String> getAnyText(final Info input) {
@@ -140,8 +140,18 @@ public class CatalogPropertyAccessor implements PropertyAccessor {
             Collection<Object> col = (Collection<Object>) input;
             List<Object> result = new ArrayList<Object>(col.size());
             for (Object o : col) {
-                Object value = getProperty(o, propName);
-                result.add(value);
+                if(o == null) {
+                    continue;
+                }
+                // if one of the nested properties is not found just ignore and move
+                // to the next one, we can have mixed collections (e.g., layer group layers)
+                try {
+                    Object value = getProperty(o, propName);
+                    Object nested = getProperty(value, propertyNames, offset + 1);
+                    result.add(nested);
+                } catch(Exception e) {
+                    LOGGER.log(Level.FINE, "Skipping nested property not found", e);
+                }
             }
             return result;
         }
@@ -165,6 +175,13 @@ public class CatalogPropertyAccessor implements PropertyAccessor {
             } else {
                 value = OwsUtils.get(input, propName);
             }
+        }
+
+        // if our nested access stumbles onto a null, we return a null value to allow
+        // for full text searches to work (e.g., workspace.name, but workspace can be null
+        // in both layer groups and styles
+        if (value == null) {
+            return null;
         }
 
         return getProperty(value, propertyNames, offset + 1);

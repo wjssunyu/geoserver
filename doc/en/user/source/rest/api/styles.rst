@@ -28,7 +28,7 @@ Controls all styles.
    * - POST
      - Create a new style
      - 201 with ``Location`` header
-     - SLD, XML, JSON
+     - SLD, XML, JSON, ZIP
        :ref:`See note below <rest_api_styles_post_put>`
      -
      - :ref:`name <rest_api_styles_name>` :ref:`raw <rest_api_styles_raw>`
@@ -52,8 +52,9 @@ supported out of the box include:
 
 * SLD 1.0 with a mime type of ``application/vnd.ogc.sld+xml``
 * SLD 1.1 / SE 1.1 with a mime type of ``application/vnd.ogc.se+xml``
+* SLD package (zip file containing sld and image files used in the style) with a mime type of application/zip
 
-Other extensions (such as :ref:`css <extensions_css>`) add support for 
+Other extensions (such as :ref:`css <css>`) add support for 
 additional formats. 
 
 Parameters
@@ -96,7 +97,7 @@ Controls a given style.
      - 200
      - SLD, HTML, XML, JSON
      - HTML
-     - :ref:`quietOnNotFound <rest_api_styles_quietOnNotFound>`
+     - :ref:`quietOnNotFound <rest_api_styles_quietOnNotFound>` :ref:`pretty <rest_api_styles_pretty>`
    * - POST
      - 
      - 405
@@ -106,15 +107,15 @@ Controls a given style.
    * - PUT
      - Modify style ``s`` 
      - 200
-     - SLD, XML, JSON, :ref:`See note above <rest_api_styles_post_put>`
+     - SLD, XML, JSON, ZIP :ref:`See note above <rest_api_styles_post_put>`
      -
      - :ref:`raw <rest_api_styles_raw>` 
    * - DELETE
      - Delete style ``s``
      - 200
      -
-     -
      - :ref:`purge <rest_api_styles_purge>` 
+     - :ref:`recurse <rest_api_styles_recurse>`
 
 Exceptions
 ~~~~~~~~~~
@@ -141,12 +142,26 @@ Parameters
 
 The ``purge`` parameter specifies whether the underlying SLD file for the style should be deleted on disk. Allowable values for this parameter are "true" or "false". When set to "true" the underlying file will be deleted. 
 
+.. _rest_api_styles_recurse:
+
+``recurse``
+^^^^^^^^^^^
+
+The ``recurse`` parameter removes references to the specified style in existing layers. Allowed values for this parameter are "true" or "false". The default value is "false".
+
 .. _rest_api_styles_quietOnNotFound:
 
 ``quietOnNotFound``
 ^^^^^^^^^^^^^^^^^^^^
 
 The ``quietOnNotFound`` parameter avoids to log an Exception when the style is not present. Note that 404 status code will be returned anyway.
+
+.. _rest_api_styles_pretty:
+
+``pretty``
+^^^^^^^^^^
+
+The ``pretty`` parameter returns the style in a human-readable format, with proper whitespace and indentation. This parameter has no effect if you request a style in its native format - in this case the API returns the exact content of the underlying file. The HTML, XML, and JSON formats do not support this parameter.
 
 ``/workspaces/<ws>/styles[.<format>]``
 --------------------------------------
@@ -171,7 +186,7 @@ Controls all styles in a given workspace.
    * - POST
      - Create a new style within workspace ``ws``
      - 201 with ``Location`` header
-     - SLD, XML, JSON, :ref:`See note above <rest_api_styles_post_put>`
+     - SLD, XML, JSON, ZIP :ref:`See note above <rest_api_styles_post_put>`
      -
      - :ref:`name <rest_api_styles_name>` :ref:`raw <rest_api_styles_raw>` 
    * - PUT
@@ -217,7 +232,7 @@ Controls a particular style in a given workspace.
    * - PUT
      - Modify style ``s`` within workspace ``ws``
      - 200
-     - SLD, XML, JSON
+     - SLD, XML, JSON, ZIP
        :ref:`See note above <rest_api_styles_post_put>`
      - 
      - :ref:`raw <rest_api_styles_raw>` 

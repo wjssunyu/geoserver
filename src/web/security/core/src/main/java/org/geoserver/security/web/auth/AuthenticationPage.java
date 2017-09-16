@@ -1,4 +1,4 @@
-/* (c) 2014 Open Source Geospatial Foundation - all rights reserved
+/* (c) 2014 - 2016 Open Source Geospatial Foundation - all rights reserved
  * (c) 2001 - 2013 OpenPlans
  * This code is licensed under the GPL 2.0 license, available at the root
  * application directory.
@@ -11,41 +11,62 @@ import java.io.UnsupportedEncodingException;
 import java.security.Principal;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Collection;
 import java.util.Enumeration;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.logging.Level;
 
+import javax.servlet.AsyncContext;
+import javax.servlet.DispatcherType;
 import javax.servlet.RequestDispatcher;
+import javax.servlet.ServletContext;
+import javax.servlet.ServletException;
 import javax.servlet.ServletInputStream;
+import javax.servlet.ServletRequest;
+import javax.servlet.ServletResponse;
 import javax.servlet.http.Cookie;
 import javax.servlet.http.HttpServletRequest;
+import javax.servlet.http.HttpServletResponse;
 import javax.servlet.http.HttpSession;
+import javax.servlet.http.Part;
 
 import org.apache.wicket.ajax.AjaxRequestTarget;
 import org.apache.wicket.ajax.form.OnChangeAjaxBehavior;
 import org.apache.wicket.ajax.markup.html.form.AjaxSubmitLink;
+import org.apache.wicket.markup.html.form.CheckBox;
 import org.apache.wicket.markup.html.form.DropDownChoice;
 import org.apache.wicket.markup.html.form.Form;
+import org.apache.wicket.markup.html.form.FormComponent;
 import org.apache.wicket.markup.html.form.FormComponentPanel;
 import org.apache.wicket.markup.html.form.SubmitLink;
 import org.apache.wicket.markup.html.form.TextField;
+import org.apache.wicket.markup.html.form.validation.AbstractFormValidator;
 import org.apache.wicket.markup.html.link.Link;
 import org.apache.wicket.model.CompoundPropertyModel;
 import org.apache.wicket.model.IModel;
 import org.apache.wicket.model.Model;
 import org.apache.wicket.model.PropertyModel;
+import org.apache.wicket.util.convert.IConverter;
+import org.apache.wicket.validation.IValidatable;
+import org.apache.wicket.validation.IValidator;
+import org.apache.wicket.validation.ValidationError;
+import org.apache.wicket.validation.validator.RangeValidator;
 import org.geoserver.platform.GeoServerExtensions;
 import org.geoserver.security.GeoServerSecurityFilterChain;
 import org.geoserver.security.GeoServerSecurityFilterChainProxy;
 import org.geoserver.security.HTTPMethod;
 import org.geoserver.security.RequestFilterChain;
+import org.geoserver.security.config.BruteForcePreventionConfig;
 import org.geoserver.security.config.LogoutFilterConfig;
 import org.geoserver.security.config.SSLFilterConfig;
 import org.geoserver.security.config.SecurityManagerConfig;
 import org.geoserver.security.web.AbstractSecurityPage;
 import org.geoserver.web.wicket.HelpLink;
+import org.geoserver.web.wicket.ParamResourceModel;
+import org.h2.bnf.Bnf;
+import org.springframework.security.web.util.matcher.IpAddressMatcher;
 
 /**
  * Main menu page for authentication.
@@ -64,6 +85,7 @@ public class AuthenticationPage extends AbstractSecurityPage {
         initComponents();
     }
 
+    @SuppressWarnings("serial")
     void initComponents() {
         
         // The request filter chain objects have to be cloned
@@ -96,7 +118,57 @@ public class AuthenticationPage extends AbstractSecurityPage {
             throw new RuntimeException(e1);
         }
         form.add(new TextField<Integer>("sslPort",new PropertyModel<Integer>(this, "sslFilterConfig.sslPort")));
+        
+        // brute force attack
+        form.add(new CheckBox("bfEnabled", new PropertyModel<Boolean>(this, "config.bruteForcePrevention.enabled")));
+        final TextField<Integer> bfMinDelay = new TextField<Integer>("bfMinDelaySeconds", new PropertyModel<Integer>(this, "config.bruteForcePrevention.minDelaySeconds"));
+        bfMinDelay.add(RangeValidator.minimum(0));
+        form.add(bfMinDelay);
+        final TextField<Integer> bfMaxDelay = new TextField<Integer>("bfMaxDelaySeconds", new PropertyModel<Integer>(this, "config.bruteForcePrevention.maxDelaySeconds"));
+        bfMaxDelay.add(RangeValidator.minimum(0));
+        form.add(bfMaxDelay);
+        
+        final TextField<List<String>> netmasks = new TextField<List<String>>("bfWhitelistedNetmasks", new PropertyModel<List<String>>(this, "config.bruteForcePrevention.whitelistedMasks")) {
+            @Override
+            public <C> IConverter<C> getConverter(Class<C> type) {
+                return (IConverter<C>) new CommaSeparatedListConverter();
+            }
+        };
+        netmasks.add(new IValidator<List<String>>() {
 
+            @Override
+            public void validate(IValidatable<List<String>> validatable) {
+                List<String> masks = validatable.getValue();
+                for (String mask : masks) {
+                    try {
+                        new IpAddressMatcher(mask);
+                    } catch(Exception e) {
+                        form.error(new ParamResourceModel("invalidMask", getPage(), mask).getString());
+                    }
+                }
+            }
+            
+        });
+        form.add(netmasks);
+        form.add(new AbstractFormValidator() {
+            
+            @Override
+            public void validate(Form<?> form) {
+                Integer min = bfMinDelay.getConvertedInput();
+                Integer max = bfMaxDelay.getConvertedInput();
+                if(max < min) {
+                    form.error(new ParamResourceModel("bfInvalidMinMax", getPage()).getString());
+                }
+            }
+            
+            @Override
+            public FormComponent<?>[] getDependentFormComponents() {
+                return new FormComponent[] {bfMinDelay, bfMaxDelay};
+            }
+        });
+        final TextField<Integer> bfMaxBlockedThreads = new TextField<Integer>("bfMaxBlockedThreads", new PropertyModel<Integer>(this, "config.bruteForcePrevention.maxBlockedThreads"));
+        bfMaxBlockedThreads.add(RangeValidator.minimum(0));
+        form.add(bfMaxBlockedThreads);
 
         form.add(new AuthenticationFiltersPanel("authFilters"));
         form.add(new HelpLink("authFiltersHelp").setDialog(dialog));
@@ -204,12 +276,12 @@ public class AuthenticationPage extends AbstractSecurityPage {
                             }
                         }        
                         chainTestResultField.getModel().setObject(result);
-                        target.addComponent(chainTestResultField);
+                        target.add(chainTestResultField);
                     }
                     catch(Exception e) {
                         error(e);
                         LOGGER.log(Level.WARNING, "Connection error", e);
-                        target.addComponent(feedbackPanel);
+                        target.add(feedbackPanel);
                     }
                 }
                 protected GeoServerSecurityFilterChainProxy getProxy() {
@@ -278,6 +350,42 @@ public class AuthenticationPage extends AbstractSecurityPage {
                         public int getLocalPort() {
                             return 0;
                         }
+
+                        @Override
+                        public ServletContext getServletContext() {
+                            return null;
+                        }
+
+                        @Override
+                        public AsyncContext startAsync() throws IllegalStateException {
+                            return null;
+                        }
+
+                        @Override
+                        public AsyncContext startAsync(ServletRequest servletRequest, ServletResponse servletResponse) throws IllegalStateException {
+                            return null;
+                        }
+
+                        @Override
+                        public boolean isAsyncStarted() {
+                            return false;
+                        }
+
+                        @Override
+                        public boolean isAsyncSupported() {
+                            return false;
+                        }
+
+                        @Override
+                        public AsyncContext getAsyncContext() {
+                            return null;
+                        }
+
+                        @Override
+                        public DispatcherType getDispatcherType() {
+                            return null;
+                        }
+
                         public String getLocalName() {
                             return null;
                         }
@@ -311,6 +419,32 @@ public class AuthenticationPage extends AbstractSecurityPage {
                         public boolean isRequestedSessionIdFromUrl() {
                             return false;
                         }
+
+                        @Override
+                        public boolean authenticate(HttpServletResponse response) throws IOException, ServletException {
+                            return false;
+                        }
+
+                        @Override
+                        public void login(String username, String password) throws ServletException {
+
+                        }
+
+                        @Override
+                        public void logout() throws ServletException {
+
+                        }
+
+                        @Override
+                        public Collection<Part> getParts() throws IOException, ServletException {
+                            return null;
+                        }
+
+                        @Override
+                        public Part getPart(String name) throws IOException, ServletException {
+                            return null;
+                        }
+
                         public boolean isRequestedSessionIdFromURL() {
                             return false;
                         }
@@ -342,13 +476,21 @@ public class AuthenticationPage extends AbstractSecurityPage {
                             return null;
                         }
                         public String getQueryString() {
-                            return null;
+                            if(urlPath == null || urlPath.indexOf("?") == -1) {
+                                return null;
+                            } else {
+                                return urlPath.substring(urlPath.indexOf("?") + 1);
+                            }
                         }
                         public String getPathTranslated() {
                             return null;
                         }
                         public String getPathInfo() {
-                            return urlPath;
+                            if(urlPath == null || urlPath.indexOf("?") == -1) {
+                                return urlPath;
+                            } else {
+                                return urlPath.substring(0, urlPath.indexOf("?"));
+                            }
                         }
                         public String getMethod() {
                             return httpMethod.toString();

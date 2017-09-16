@@ -1,9 +1,11 @@
-/* (c) 2014 Open Source Geospatial Foundation - all rights reserved
+/* (c) 2014-2015 Open Source Geospatial Foundation - all rights reserved
  * (c) 2001 - 2013 OpenPlans
  * This code is licensed under the GPL 2.0 license, available at the root
  * application directory.
  */
 package org.geoserver.catalog;
+
+import it.geosolutions.imageio.maskband.DatasetLayout;
 
 import java.io.IOException;
 import java.util.List;
@@ -15,6 +17,8 @@ import org.geotools.coverage.grid.GridCoverage2D;
 import org.geotools.coverage.grid.io.GridCoverage2DReader;
 import org.geotools.coverage.grid.io.OverviewPolicy;
 import org.geotools.coverage.grid.io.StructuredGridCoverage2DReader;
+import org.geotools.data.ResourceInfo;
+import org.geotools.data.ServiceInfo;
 import org.geotools.geometry.GeneralEnvelope;
 import org.opengis.coverage.grid.Format;
 import org.opengis.coverage.grid.GridEnvelope;
@@ -58,7 +62,7 @@ public class SingleGridCoverage2DReader implements GridCoverage2DReader {
      */
     protected void checkCoverageName(String coverageName) {
         if (!this.coverageName.equals(coverageName)) {
-            throw new IllegalArgumentException("Unkonwn coverage named " + coverageName
+            throw new IllegalArgumentException("Unknown coverage named " + coverageName
                     + ", the only valid value is: " + this.coverageName);
         }
     }
@@ -212,4 +216,23 @@ public class SingleGridCoverage2DReader implements GridCoverage2DReader {
         return delegate.getResolutionLevels(coverageName);
     }
 
+    @Override
+    public DatasetLayout getDatasetLayout() {
+        return delegate.getDatasetLayout();
+    }
+
+    @Override
+    public DatasetLayout getDatasetLayout(String coverageName) {
+        return delegate.getDatasetLayout(coverageName);
+    }
+
+    @Override
+    public ServiceInfo getInfo() {
+        return delegate.getInfo();
+    }
+
+    @Override
+    public ResourceInfo getInfo(String coverageName) {
+        return delegate.getInfo(coverageName);
+    }
 }

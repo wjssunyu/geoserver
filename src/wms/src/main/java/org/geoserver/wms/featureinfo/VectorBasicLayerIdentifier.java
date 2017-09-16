@@ -1,4 +1,4 @@
-/* (c) 2014 Open Source Geospatial Foundation - all rights reserved
+/* (c) 2014 - 2016 Open Source Geospatial Foundation - all rights reserved
  * (c) 2001 - 2013 OpenPlans
  * This code is licensed under the GPL 2.0 license, available at the root
  * application directory.
@@ -138,6 +138,7 @@ public class VectorBasicLayerIdentifier extends AbstractVectorLayerIdentifier {
         String typeName = schema.getName().getLocalPart();
         Query q = new Query(typeName, null, getFInfoFilter, maxFeatures, params.getPropertyNames(),
                 null);
+        q.setSortBy(params.getSort());
 
         // handle sql view params
         final Map<String, String> viewParams = params.getViewParams();
@@ -146,7 +147,12 @@ public class VectorBasicLayerIdentifier extends AbstractVectorLayerIdentifier {
         }
 
         FeatureCollection match;
-        System.out.println(q);
+        LOGGER.log(Level.FINE, q.toString());
+        // let's see if we need to reproject
+        if (!wms.isFeaturesReprojectionDisabled()) {
+            // reproject the features to the request CRS, this way complex feature will also be reprojected
+            q.setCoordinateSystemReproject(requestedCRS);
+        }
         match = featureSource.getFeatures(q);
 
         // if we could not include the rules filter into the query, post process in

@@ -20,7 +20,7 @@ import org.junit.Before;
 import org.junit.Test;
 import org.w3c.dom.Document;
 
-import com.mockrunner.mock.web.MockHttpServletResponse;
+import org.springframework.mock.web.MockHttpServletResponse;
 
 public class DescribeCoverageTest extends WCSTestSupport {
     protected final static String DESCRIBE_URL = "wcs?service=WCS&version="+VERSION+"&request=DescribeCoverage";
@@ -34,6 +34,8 @@ public class DescribeCoverageTest extends WCSTestSupport {
     protected static QName TIMERANGES = new QName(MockData.SF_URI, "timeranges", MockData.SF_PREFIX);
     
     protected static QName MULTIDIM = new QName(MockData.SF_URI, "multidim", MockData.SF_PREFIX);
+    
+    protected static QName PK50095 = new QName(MockData.SF_URI, "pk50095", MockData.SF_PREFIX);
     
     @Before
     public void clearDimensions() {
@@ -50,6 +52,7 @@ public class DescribeCoverageTest extends WCSTestSupport {
         testData.addRasterLayer(WATTEMP, "watertemp.zip", null, null, SystemTestData.class, getCatalog());
         testData.addRasterLayer(TIMERANGES, "timeranges.zip", null, null, SystemTestData.class, getCatalog());
         testData.addRasterLayer(MULTIDIM, "multidim.zip", null, null, SystemTestData.class, getCatalog());
+        testData.addRasterLayer(PK50095, "wi-utm.zip", null, null, SystemTestData.class, getCatalog());
     }
 
     @Test
@@ -60,6 +63,18 @@ public class DescribeCoverageTest extends WCSTestSupport {
         
         checkValidationErrors(dom, WCS20_SCHEMA);
         assertXpathEvaluatesTo("3", "count(//wcs:CoverageDescription//gmlcov:rangeType//swe:DataRecord//swe:field)", dom);
+        assertXpathEvaluatesTo("image/tiff", "//wcs:CoverageDescriptions//wcs:CoverageDescription[1]//wcs:ServiceParameters//wcs:nativeFormat", dom);
+    }
+    
+    @Test
+    public void testProjectectedKVP() throws Exception {
+        Document dom = getAsDOM(DESCRIBE_URL + "&coverageId=wcs__utm11");
+        assertNotNull(dom);
+        // print(dom, System.out);
+        
+        checkValidationErrors(dom, WCS20_SCHEMA);
+        assertXpathEvaluatesTo("E N", "//gml:boundedBy/gml:Envelope/@axisLabels", dom);
+        assertXpathEvaluatesTo("1", "count(//wcs:CoverageDescription//gmlcov:rangeType//swe:DataRecord//swe:field)", dom);
         assertXpathEvaluatesTo("image/tiff", "//wcs:CoverageDescriptions//wcs:CoverageDescription[1]//wcs:ServiceParameters//wcs:nativeFormat", dom);
     }
     
@@ -77,6 +92,20 @@ public class DescribeCoverageTest extends WCSTestSupport {
         assertXpathEvaluatesTo("1", "count(//wcs:CoverageDescription/gmlcov:rangeType/swe:DataRecord/swe:field)", dom);
         assertXpathEvaluatesTo("rain", "//wcs:CoverageDescription/gmlcov:rangeType//swe:DataRecord/swe:field/@name", dom);
         assertXpathEvaluatesTo("mm", "//wcs:CoverageDescription/gmlcov:rangeType/swe:DataRecord/swe:field/swe:Quantity/swe:uom/@code", dom);
+        assertXpathEvaluatesTo("text/plain", "//wcs:CoverageDescriptions//wcs:CoverageDescription[1]//wcs:ServiceParameters//wcs:nativeFormat", dom);
+    }
+    
+    @Test
+    public void testAxisOrderUtm() throws Exception {
+        Document dom = getAsDOM(DESCRIBE_URL + "&coverageId=sf__pk50095");
+        assertNotNull(dom);
+        print(dom, System.out);
+        
+        checkValidationErrors(dom, WCS20_SCHEMA);
+        assertXpathEvaluatesTo("347660.5162105911 5191763.949937257", "//gml:boundedBy/gml:Envelope/gml:lowerCorner", dom);
+        assertXpathEvaluatesTo("353440.1129425911 5196950.767517257", "//gml:boundedBy/gml:Envelope/gml:upperCorner", dom);
+        assertXpathEvaluatesTo("+1 +2", "//gml:coverageFunction/gml:GridFunction/gml:sequenceRule/@axisOrder", dom);
+        assertXpathEvaluatesTo("347671.1015525911 5196940.182175256", "//gml:domainSet/gml:RectifiedGrid/gml:origin/gml:Point/gml:pos", dom);
     }
 
     @Test
@@ -108,7 +137,29 @@ public class DescribeCoverageTest extends WCSTestSupport {
         assertXpathEvaluatesTo("9", "count(//wcs:CoverageDescription//gmlcov:rangeType//swe:DataRecord//swe:field)", dom);        
         assertXpathEvaluatesTo("image/tiff", "//wcs:CoverageDescriptions//wcs:CoverageDescription[1]//wcs:ServiceParameters//wcs:nativeFormat", dom);
     }
-    
+
+    @Test
+    public void testMultiBandKVPNoWs() throws Exception {
+        Document dom = getAsDOM(DESCRIBE_URL + "&coverageId=multiband");
+        assertNotNull(dom);
+        // print(dom, System.out);
+
+        checkValidationErrors(dom, WCS20_SCHEMA);       
+        assertXpathEvaluatesTo("9", "count(//wcs:CoverageDescription//gmlcov:rangeType//swe:DataRecord//swe:field)", dom);        
+        assertXpathEvaluatesTo("image/tiff", "//wcs:CoverageDescriptions//wcs:CoverageDescription[1]//wcs:ServiceParameters//wcs:nativeFormat", dom);
+    }
+
+    @Test
+    public void testMultiBandKVPLocalWs() throws Exception {
+        Document dom = getAsDOM("wcs/" + DESCRIBE_URL + "&coverageId=multiband");
+        assertNotNull(dom);
+        // print(dom, System.out);
+
+        checkValidationErrors(dom, WCS20_SCHEMA);       
+        assertXpathEvaluatesTo("9", "count(//wcs:CoverageDescription//gmlcov:rangeType//swe:DataRecord//swe:field)", dom);        
+        assertXpathEvaluatesTo("image/tiff", "//wcs:CoverageDescriptions//wcs:CoverageDescription[1]//wcs:ServiceParameters//wcs:nativeFormat", dom);
+    }
+
     @Test
     public void testMultipleCoverages() throws Exception {
         Document dom = getAsDOM(DESCRIBE_URL + "&coverageId=wcs__multiband,wcs__BlueMarble");
@@ -124,7 +175,39 @@ public class DescribeCoverageTest extends WCSTestSupport {
         assertXpathEvaluatesTo("3", "count(//wcs:CoverageDescription[2]//gmlcov:rangeType//swe:DataRecord//swe:field)", dom);
         assertXpathEvaluatesTo("image/tiff", "//wcs:CoverageDescriptions/wcs:CoverageDescription[2]//wcs:ServiceParameters//wcs:nativeFormat", dom);
     }
-    
+
+    @Test
+    public void testMultipleCoveragesNoWs() throws Exception {
+        Document dom = getAsDOM(DESCRIBE_URL + "&coverageId=multiband,wcs__BlueMarble");
+        assertNotNull(dom);
+        // print(dom, System.out);
+
+        checkValidationErrors(dom, WCS20_SCHEMA);       
+        assertXpathEvaluatesTo("2", "count(//wcs:CoverageDescription)", dom);        
+        assertXpathEvaluatesTo("wcs__multiband", "//wcs:CoverageDescriptions/wcs:CoverageDescription[1]/@gml:id", dom);
+        assertXpathEvaluatesTo("9", "count(//wcs:CoverageDescription[1]//gmlcov:rangeType//swe:DataRecord//swe:field)", dom);
+        assertXpathEvaluatesTo("image/tiff", "//wcs:CoverageDescriptions/wcs:CoverageDescription[1]//wcs:ServiceParameters//wcs:nativeFormat", dom);
+        assertXpathEvaluatesTo("wcs__BlueMarble", "//wcs:CoverageDescriptions/wcs:CoverageDescription[2]/@gml:id", dom);
+        assertXpathEvaluatesTo("3", "count(//wcs:CoverageDescription[2]//gmlcov:rangeType//swe:DataRecord//swe:field)", dom);
+        assertXpathEvaluatesTo("image/tiff", "//wcs:CoverageDescriptions/wcs:CoverageDescription[2]//wcs:ServiceParameters//wcs:nativeFormat", dom);
+    }
+
+    @Test
+    public void testMultipleCoveragesLocalWs() throws Exception {
+        Document dom = getAsDOM("wcs/" + DESCRIBE_URL + "&coverageId=multiband,BlueMarble");
+        assertNotNull(dom);
+        // print(dom, System.out);
+
+        checkValidationErrors(dom, WCS20_SCHEMA);       
+        assertXpathEvaluatesTo("2", "count(//wcs:CoverageDescription)", dom);        
+        assertXpathEvaluatesTo("wcs__multiband", "//wcs:CoverageDescriptions/wcs:CoverageDescription[1]/@gml:id", dom);
+        assertXpathEvaluatesTo("9", "count(//wcs:CoverageDescription[1]//gmlcov:rangeType//swe:DataRecord//swe:field)", dom);
+        assertXpathEvaluatesTo("image/tiff", "//wcs:CoverageDescriptions/wcs:CoverageDescription[1]//wcs:ServiceParameters//wcs:nativeFormat", dom);
+        assertXpathEvaluatesTo("wcs__BlueMarble", "//wcs:CoverageDescriptions/wcs:CoverageDescription[2]/@gml:id", dom);
+        assertXpathEvaluatesTo("3", "count(//wcs:CoverageDescription[2]//gmlcov:rangeType//swe:DataRecord//swe:field)", dom);
+        assertXpathEvaluatesTo("image/tiff", "//wcs:CoverageDescriptions/wcs:CoverageDescription[2]//wcs:ServiceParameters//wcs:nativeFormat", dom);
+    }
+
     @Test
     public void testMultipleCoveragesOneNotExists() throws Exception {
         MockHttpServletResponse response = getAsServletResponse(DESCRIBE_URL + "&coverageId=wcs__multiband,wcs__IAmNotThere");
@@ -164,7 +247,7 @@ public class DescribeCoverageTest extends WCSTestSupport {
         assertXpathEvaluatesTo("1", "count(//wcs:CoverageDescription)", dom);        
         assertXpathEvaluatesTo("sf__rain", "//wcs:CoverageDescriptions/wcs:CoverageDescription[1]/@gml:id", dom);
         assertXpathEvaluatesTo("1", "count(//wcs:CoverageDescription[1]//gmlcov:rangeType//swe:DataRecord//swe:field)", dom);
-        assertXpathEvaluatesTo("image/tiff", "//wcs:CoverageDescriptions/wcs:CoverageDescription[1]//wcs:ServiceParameters//wcs:nativeFormat", dom);
+        assertXpathEvaluatesTo("text/plain", "//wcs:CoverageDescriptions/wcs:CoverageDescription[1]//wcs:ServiceParameters//wcs:nativeFormat", dom);
     }
     
     @Test
@@ -198,7 +281,7 @@ public class DescribeCoverageTest extends WCSTestSupport {
         assertXpathEvaluatesTo("2008-11-01T00:00:00.000Z", "//gmlcov:metadata/gmlcov:Extension/wcsgs:TimeDomain/gml:TimePeriod/gml:endPosition", dom);
         assertXpathEvaluatesTo("0", "count(//gmlcov:metadata/gmlcov:Extension/wcsgs:TimeDomain/gml:TimePeriod/gml:TimeInterval)", dom);
     }
-    
+
     @Test
     public void testDescribeTimeDiscreteInterval() throws Exception {
         setupRasterDimension(getLayerId(WATTEMP), ResourceInfo.TIME, DimensionPresentation.DISCRETE_INTERVAL, 1000 * 60 * 60 * 24d);

@@ -1,4 +1,4 @@
-/* (c) 2014 Open Source Geospatial Foundation - all rights reserved
+/* (c) 2014 - 2016 Open Source Geospatial Foundation - all rights reserved
  * (c) 2001 - 2013 OpenPlans
  * This code is licensed under the GPL 2.0 license, available at the root
  * application directory.
@@ -9,6 +9,7 @@ import java.beans.Introspector;
 import java.lang.reflect.Method;
 import java.sql.Driver;
 import java.sql.DriverManager;
+import java.util.ArrayList;
 import java.util.Enumeration;
 import java.util.HashSet;
 import java.util.Iterator;
@@ -25,6 +26,7 @@ import javax.imageio.ImageIO;
 import javax.imageio.spi.IIORegistry;
 import javax.imageio.spi.IIOServiceProvider;
 import javax.imageio.spi.ImageReaderSpi;
+import javax.imageio.spi.ImageReaderWriterSpi;
 import javax.imageio.spi.ImageWriterSpi;
 import javax.media.jai.JAI;
 import javax.media.jai.OperationRegistry;
@@ -57,18 +59,28 @@ import org.geotools.util.logging.Logging;
 import org.opengis.referencing.AuthorityFactory;
 import org.opengis.referencing.FactoryException;
 
+import com.google.common.collect.Lists;
+
+import it.geosolutions.concurrent.ConcurrentTileCacheMultiMap;
+
 /**
  * Listens for GeoServer startup and tries to configure axis order, logging
  * redirection, and a few other things that really need to be set up before
  * anything else starts up
  */
 public class GeoserverInitStartupListener implements ServletContextListener {
+    static final String COM_SUN_JPEG2000_PACKAGE = "com.sun.media.imageioimpl.plugins.jpeg2000";
+
     private static final Logger LOGGER = Logging
             .getLogger("org.geoserver.logging");
     
     boolean relinquishLoggingControl;
 
     private Iterator<Class<?>> products;
+
+    private final static String COMPARISON_TOLERANCE_PROPERTY = "COMPARISON_TOLERANCE";
+
+    private final static double DEFAULT_COMPARISON_TOLERANCE = 1e-8;
 
     public void contextInitialized(ServletContextEvent sce) {
         // start up tctool - remove it before committing!!!!
@@ -112,8 +124,14 @@ public class GeoserverInitStartupListener implements ServletContextListener {
                         
         // setup concurrent operation registry
         JAI jaiDef = JAI.getDefaultInstance();
-        if(!(jaiDef.getOperationRegistry() instanceof ConcurrentOperationRegistry)) {
-            jaiDef.setOperationRegistry(ConcurrentOperationRegistry.initializeRegistry());
+        if(!(jaiDef.getOperationRegistry() instanceof ConcurrentOperationRegistry || 
+             jaiDef.getOperationRegistry() instanceof it.geosolutions.jaiext.ConcurrentOperationRegistry)) {
+             jaiDef.setOperationRegistry(ConcurrentOperationRegistry.initializeRegistry());
+        }
+        
+        // setup the concurrent tile cache (has proper memory limit handling also for small tiles)
+        if(!(jaiDef.getTileCache() instanceof ConcurrentTileCacheMultiMap)) {
+            jaiDef.setTileCache(new ConcurrentTileCacheMultiMap());
         }
         
         // make sure we remember if GeoServer controls logging or not
@@ -134,12 +152,25 @@ public class GeoserverInitStartupListener implements ServletContextListener {
             Hints.putSystemDefault(Hints.FORCE_AXIS_ORDER_HONORING, "http");
         }
         Hints.putSystemDefault(Hints.LENIENT_DATUM_SHIFT, true);
-        
+
         // setup the referencing tolerance to make it more tolerant to tiny differences
         // between projections (increases the chance of matching a random prj file content
         // to an actual EPSG code
-        Hints.putSystemDefault(Hints.COMPARISON_TOLERANCE, 1e-9);
-        
+        String comparisonToleranceProperty = GeoServerExtensions.getProperty(COMPARISON_TOLERANCE_PROPERTY);
+        double comparisonTolerance = DEFAULT_COMPARISON_TOLERANCE;
+        if (comparisonToleranceProperty != null) {
+            try {
+                comparisonTolerance = Double.parseDouble(comparisonToleranceProperty);
+            } catch (NumberFormatException nfe) {
+                if (LOGGER.isLoggable(Level.WARNING)) {
+                    LOGGER.warning("Unable to parse the specified COMPARISON_TOLERANCE "
+                            + "system property: " + comparisonToleranceProperty + 
+                            " which should be a number. Using Default: " + DEFAULT_COMPARISON_TOLERANCE);
+                }
+            }
+        }
+        Hints.putSystemDefault(Hints.COMPARISON_TOLERANCE, comparisonTolerance);
+
         final Hints defHints = GeoTools.getDefaultHints();
 
         // Initialize GridCoverageFactory so that we don't make a lookup every time a factory is needed
@@ -157,12 +188,18 @@ public class GeoserverInitStartupListener implements ServletContextListener {
         // Fix issue with tomcat and JreMemoryLeakPreventionListener causing issues with 
         // IIORegistry leading to imageio plugins not being properly initialized
         ImageIO.scanForPlugins();
-
         
         // in any case, the native png reader is worse than the pure java ones, so
         // let's disable it (the native png writer is on the other side faster)...
         ImageIOExt.allowNativeCodec("png", ImageReaderSpi.class, false);
         ImageIOExt.allowNativeCodec("png", ImageWriterSpi.class, true);
+        
+        // remove the ImageIO JPEG200 readers/writes, they are outdated and not quite working
+        // GeoTools has the GDAL and Kakadu ones which do work, removing these avoids the
+        // registry russian roulette (one never knows which one comes first, and 
+        // to re-order/unregister correctly the registry scan has to be completed
+        unregisterImageIOJpeg2000Support(ImageReaderSpi.class);
+        unregisterImageIOJpeg2000Support(ImageWriterSpi.class);
         
         // initialize GeoTools factories so that we don't make a SPI lookup every time a factory is needed
         Hints.putSystemDefault(Hints.FILTER_FACTORY, CommonFactoryFinder.getFilterFactory2(null));
@@ -174,6 +211,24 @@ public class GeoserverInitStartupListener implements ServletContextListener {
                 CoverageAccessInfoImpl.DEFAULT_MaxPoolSize, CoverageAccessInfoImpl.DEFAULT_KeepAliveTime, 
                 TimeUnit.MILLISECONDS, new LinkedBlockingQueue<Runnable>());
         Hints.putSystemDefault(Hints.EXECUTOR_SERVICE, executor);
+    }
+    
+    /**
+     * Unregisters providers in the "https://github.com/geosolutions-it/evo-odas/issues/102" for a given
+     * category (reader, writer). ImageIO contains a pure java reader and a writer, but also a couple based
+     * on native libs (if present).
+     * 
+     * @param category
+     */
+    private <T extends ImageReaderWriterSpi> void unregisterImageIOJpeg2000Support(Class<T> category) {
+        IIORegistry registry = IIORegistry.getDefaultInstance();
+        Iterator<T> it = registry.getServiceProviders(category, false);
+        ArrayList<T> providers = Lists.newArrayList(it);
+        for (T spi : providers) {
+            if (COM_SUN_JPEG2000_PACKAGE.equals(spi.getClass().getPackage().getName())) {
+                registry.deregisterServiceProvider(spi);
+            }
+        }
     }
     
     /**
@@ -353,7 +408,7 @@ public class GeoserverInitStartupListener implements ServletContextListener {
                 System.gc();
                 System.runFinalization();
             } catch(Throwable t) {
-                System.out.println("Failed to perform closing up finalization");
+                LOGGER.severe("Failed to perform closing up finalization");
                 t.printStackTrace();
             }
         } catch(Throwable t) {

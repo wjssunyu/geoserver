@@ -1,10 +1,17 @@
+/* (c) 2014 - 2016 Open Source Geospatial Foundation - all rights reserved
+ * This code is licensed under the GPL 2.0 license, available at the root
+ * application directory.
+ */
 package org.geoserver.solr;
 
-import static org.junit.Assert.*;
+import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertFalse;
 
 import java.io.File;
 import java.util.List;
 
+import org.apache.wicket.MarkupContainer;
+import org.apache.wicket.feedback.FeedbackMessage;
 import org.apache.wicket.util.tester.FormTester;
 import org.geoserver.catalog.DataStoreInfo;
 import org.geoserver.catalog.StoreInfo;
@@ -13,9 +20,7 @@ import org.geoserver.web.GeoServerWicketTestSupport;
 import org.geoserver.web.data.store.DataAccessNewPage;
 import org.geoserver.web.data.workspace.WorkspacesModel;
 import org.geotools.data.solr.SolrDataStoreFactory;
-import org.junit.Ignore;
 import org.junit.Test;
-
 
 public class SolrStorePageTest extends GeoServerWicketTestSupport {
 
@@ -28,23 +33,42 @@ public class SolrStorePageTest extends GeoServerWicketTestSupport {
     }
 
     @Test
-    @Ignore
+    public void testDeprecatedParamsHidden() throws Exception {
+        startPage();
+
+        // print(tester.getLastRenderedPage(), true, true);
+
+        // check the deprecated fields are not visible
+        MarkupContainer container = (MarkupContainer) tester
+                .getComponentFromLastRenderedPage("dataStoreForm:parametersPanel:parameters:1");
+        assertEquals("layer_mapper", container.getDefaultModelObject());
+        assertFalse(container.get("parameterPanel").isVisible());
+        container = (MarkupContainer) tester
+                .getComponentFromLastRenderedPage("dataStoreForm:parametersPanel:parameters:2");
+        assertEquals("layer_name_field", container.getDefaultModelObject());
+        assertFalse(container.get("parameterPanel").isVisible());
+    }
+
+    @Test
     public void testChangeWorkspaceNamespace() throws Exception {
         startPage();
 
         WorkspaceInfo defaultWs = getCatalog().getDefaultWorkspace();
 
-        tester.assertModelValue("dataStoreForm:workspacePanel:border:paramValue", defaultWs);
+        tester.assertModelValue("dataStoreForm:workspacePanel:border:border_body:paramValue", defaultWs);
+        // print(tester.getLastRenderedPage(), true, true);
 
         // configure the store
-        FormTester ft = tester.newFormTester("dataStoreForm");
-        ft.setValue("dataStoreNamePanel:border:paramValue", "testStore");
-        ft.setValue("parametersPanel:url:border:paramValue", "file://" + new File("./target").getCanonicalPath());
-        ft.select("workspacePanel:border:paramValue", 2);
-        ft.submit();
-        tester.executeAjaxEvent("dataStoreForm:workspacePanel:border:paramValue", "onchange");
-        tester.executeAjaxEvent("dataStoreForm:save", "onclick");
-        
+        FormTester ft = tester.newFormTester("dataStoreForm", false);
+        ft.select("workspacePanel:border:border_body:paramValue", 2);
+        tester.executeAjaxEvent("dataStoreForm:workspacePanel:border:border_body:paramValue", "change");
+
+        ft.setValue("dataStoreNamePanel:border:border_body:paramValue", "testStore");
+        ft.setValue("parametersPanel:parameters:0:parameterPanel:border:border_body:paramValue",
+                "file://" + new File("./target").getCanonicalPath());
+        ft.select("workspacePanel:border:border_body:paramValue", 2);
+        ft.submit("save");
+        tester.assertNoFeedbackMessage(FeedbackMessage.ERROR);
         
         // get the workspace we have just configured in the GUI
         WorkspacesModel wm = new WorkspacesModel();
@@ -53,6 +77,7 @@ public class SolrStorePageTest extends GeoServerWicketTestSupport {
 
         // check it's the same
         StoreInfo store = getCatalog().getStoreByName("testStore", DataStoreInfo.class);
-        assertEquals(getCatalog().getNamespaceByPrefix(ws.getName()).getURI(), store.getConnectionParameters().get("namespace"));
+        assertEquals(getCatalog().getNamespaceByPrefix(ws.getName()).getURI(),
+                store.getConnectionParameters().get("namespace"));
     }
 }

@@ -107,7 +107,7 @@ or
     - 254
     - 190
 
-A chosen DPI value from the above configuration is used in WMS GetMap requests as an added format_options (GeoServer) or map_resolution (MapServer) parameter. This is used for symbol/label-rescaling suitable for high resolution printouts, see `Geoserver format_options specification <http://docs.geoserver.org/latest/en/user/services/wms/vendor.html>`_ (Geoserver 2.1) and `MapServer defresolution keyword <http://mapserver.org/development/rfc/ms-rfc-55.html>`_ (MapServer 5.6) for more information.
+A chosen DPI value from the above configuration is used in WMS GetMap requests as an added format_options (GeoServer) or map_resolution (MapServer) parameter. This is used for symbol/label-rescaling suitable for high resolution printouts, see :ref:`GeoServer format_options specification <wms_vendor_parameters>` (GeoServer 2.1) and `MapServer defresolution keyword <http://mapserver.org/development/rfc/ms-rfc-55.html>`_ (MapServer 5.6) for more information.
 
 In general, PDF dimensions and positions are specified in points. 72 points == 1 inch == 25.4 mm.
 
@@ -137,9 +137,10 @@ If the 'outputFilename' parameter is defined in the main body then that name wil
 
 "brokenUrlPlaceholder" the placeholder image to use in the case of a broken url.  By default, when a url request fails, an error is thrown and the pdf process terminates.  However if this parameter is set then instead a placeholder image is returned.
 Non-null values are:
-  * "default" - use the system default image.
-  * "throw" - throw an exception.
-  * <url> - obtain the image from the supplied url.  If this url is broken then an exception will be thrown.  This can be anytype of valid url from a file url to https url.
+
+* "default" - use the system default image.
+* "throw" - throw an exception.
+* <url> - obtain the image from the supplied url.  If this url is broken then an exception will be thrown.  This can be anytype of valid url from a file url to https url.
 
 "proxyBaseUrl" the optional url of the proxy between mapfish-print and the internet.  This is the url base that will be in the info.json response.  On occasion the url or port of the web server containing mapfish-print is not the server that is public to the internet and the requests are proxied to the mapfish-print webserver.  In this case it is important for the info.json request to return the public URL instead of the url of the webserver.
 
@@ -625,7 +626,7 @@ Display each layers along with its classes (icons and labels).
 
 **horizontalAlignment** can be left, right or center (default) and aligns all items left, right or in the center.
 
-**iconMaxWidth**, **iconMaxHeight**, **defaultScale** with value of 0 indicate that the value will be ignored, i.e. the values are automatically set to the equivalent of Infinity, Infinity and 1 respectively. If the legends URL passed to MapFish (see http://mapfish.org/doc/print/protocol.html#print-pdf) are obtained from a WMS GetLegendGraphic request, the width/height are only indicative (even more when a label text is included with `LEGEND_OPTIONS/forceLabels parameter <http://docs.geoserver.org/stable/en/user/services/wms/get_legend_graphic/legendgraphic.html#controlling-legend-appearance-with-legend-options>`_) and it would be safer, in order to preserve scale coherence between legends and map, to set **iconMaxWidth** and **iconMaxHeight** to zero.
+**iconMaxWidth**, **iconMaxHeight**, **defaultScale** with value of 0 indicate that the value will be ignored, i.e. the values are automatically set to the equivalent of Infinity, Infinity and 1 respectively. If the legends URL passed to MapFish (see http://mapfish.org/doc/print/protocol.html#print-pdf) are obtained from a WMS GetLegendGraphic request, the width/height are only indicative (even more when a label text is included with :ref:`LEGEND_OPTIONS/forceLabels parameter <get_legend_graphic_options>`) and it would be safer, in order to preserve scale coherence between legends and map, to set **iconMaxWidth** and **iconMaxHeight** to zero.
 
 **textMaxWidth/Height** and **iconMaxWidth/Height** define how wide/high the text/icon cells of a legend item can be. At this point textMaxHeight is ignored.
 
@@ -637,7 +638,7 @@ if **maxWidth** is set the whole legend gets a maximum width, just like other bl
 
 if **maxHeight** is set the whole legend gets a maximum height. This forces more than one column to appear if the legend is higher than the specified value. This can be used to enable the multi-column layout. 0 makes the maxHeight= max value, i.e. the equivalent of infinity.
 
-if **defaultScale** is non null it means that the legend image will be scaled so it doesn't take the full space. This can be overriden for individual classes in the spec JSON sent to the print module by adding an attribute called 'scale' and giving it a number. In conjunction with iconMaxWidth/Height this can be used to control average and also maximum width/height. If **defaultScale** equals 1, one pixel is scaled to one point (1/72 inch) in generated PDF. By default, as GeoServer legends are generated with ~90 dpi resolution (exactly 25.4/0.28), setting **defaultScale** value to 0.7937 (72*0.28/25.4) produces legend icons of same size as corresponding map icons. As the `LEGEND_OPTIONS/dpi GeoServer parameter <http://docs.geoserver.org/stable/en/user/services/wms/get_legend_graphic/legendgraphic.html#controlling-legend-appearance-with-legend-options>`_ is not handled by MapFish, the resolution will necessary be ~91 dpi, which may cause visual quality difference with the map.
+if **defaultScale** is non null it means that the legend image will be scaled so it doesn't take the full space. This can be overriden for individual classes in the spec JSON sent to the print module by adding an attribute called 'scale' and giving it a number. In conjunction with iconMaxWidth/Height this can be used to control average and also maximum width/height. If **defaultScale** equals 1, one pixel is scaled to one point (1/72 inch) in generated PDF. By default, as GeoServer legends are generated with ~90 dpi resolution (exactly 25.4/0.28), setting **defaultScale** value to 0.7937 (72*0.28/25.4) produces legend icons of same size as corresponding map icons. As the :ref:`LEGEND_OPTIONS/dpi GeoServer parameter <get_legend_graphic_options>` is not handled by MapFish, the resolution will necessary be ~91 dpi, which may cause visual quality difference with the map.
 
 For this to work, you need to set the **layerTree** config option on MF print widgets,
 more precisely the legends should be present in the print.pdf JSON request.

@@ -7,7 +7,7 @@ Welcome to GeoServer development. The project makes use of a number of resources
 
 * https://github.com/geoserver/geoserver.github.io/wiki Wiki used for Proposals
 * https://github.com/geoserver/geoserver Github source code
-* http://jira.codehaus.org/browse/GEOS Codehaus issue tracker
+* https://osgeo-org.atlassian.net/projects/GEOS Jira issue tracker
 * `GeoServer User Manual <http://docs.geoserver.org/latest/en/user/>`_
 * `GeoServer Developer Manual <http://docs.geoserver.org/latest/en/developer/>`_
 
@@ -38,7 +38,7 @@ Question and answer:
 License
 -------
 
-For complete license information review :download:`LICENSE.txt </../../../../src/LICENSE.txt>`.
+For complete license information review :download:`LICENSE.txt </../../../../LICENSE.txt>`.
 
 * GeoServer is free software and is licensed under the :download:`GNU General Public License </../../../../src/release/GPL.txt>`::
 

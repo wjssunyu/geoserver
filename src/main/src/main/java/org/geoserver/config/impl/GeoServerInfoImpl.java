@@ -7,6 +7,7 @@ package org.geoserver.config.impl;
 
 import java.util.HashMap;
 import java.util.Map;
+import java.util.Objects;
 
 import org.geoserver.catalog.MetadataMap;
 import org.geoserver.config.ResourceErrorHandling;
@@ -47,6 +48,8 @@ public class GeoServerInfoImpl implements GeoServerInfo {
     protected Boolean xmlExternalEntitiesEnabled = Boolean.FALSE;
     
     protected String lockProviderName;
+
+    protected WebUIMode webUIMode = WebUIMode.DEFAULT;
     
     //deprecated members, kept around to maintain xstream persistence backward compatability
     @Deprecated
@@ -341,7 +344,7 @@ public class GeoServerInfoImpl implements GeoServerInfo {
         if (updateSequence != other.getUpdateSequence())
             return false;
       
-        if (globalServices != other.isGlobalServices())
+        if (!Objects.equals(globalServices, other.isGlobalServices()))
             return false;
         if (xmlPostRequestLogBufferSize == null) {
             if (other.getXmlPostRequestLogBufferSize() != null) {
@@ -352,10 +355,10 @@ public class GeoServerInfoImpl implements GeoServerInfo {
             return false;
         }
         
-        if (resourceErrorHandling == null) {
+        if (getResourceErrorHandling() == null) {
             if (other.getResourceErrorHandling() != null) return false;
         } else {
-            if (!resourceErrorHandling.equals(other.getResourceErrorHandling())) return false;
+            if (!getResourceErrorHandling().equals(other.getResourceErrorHandling())) return false;
         }
         
         if (lockProviderName == null) {
@@ -434,7 +437,21 @@ public class GeoServerInfoImpl implements GeoServerInfo {
     }
 
     public ResourceErrorHandling getResourceErrorHandling() {
-        return this.resourceErrorHandling;
+        if(this.resourceErrorHandling == null) {
+            return ResourceErrorHandling.SKIP_MISCONFIGURED_LAYERS;
+        }
+        
+        return resourceErrorHandling;
+    }
+
+    @Override
+    public WebUIMode getWebUIMode() {
+        return webUIMode;
+    }
+
+    @Override
+    public void setWebUIMode(WebUIMode webUIMode) {
+        this.webUIMode = webUIMode;
     }
 
 }

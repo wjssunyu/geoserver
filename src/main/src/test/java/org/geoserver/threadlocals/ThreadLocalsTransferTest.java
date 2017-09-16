@@ -1,3 +1,8 @@
+/* (c) 2014 - 2016 Open Source Geospatial Foundation - all rights reserved
+ * (c) 2013 OpenPlans
+ * This code is licensed under the GPL 2.0 license, available at the root
+ * application directory.
+ */
 package org.geoserver.threadlocals;
 
 import static org.junit.Assert.assertNotEquals;
@@ -18,7 +23,7 @@ import org.geoserver.catalog.impl.LayerInfoImpl;
 import org.geoserver.catalog.impl.WorkspaceInfoImpl;
 import org.geoserver.data.test.SystemTestData;
 import org.geoserver.ows.Dispatcher;
-import org.geoserver.ows.LocalLayer;
+import org.geoserver.ows.LocalPublished;
 import org.geoserver.ows.LocalWorkspace;
 import org.geoserver.ows.Request;
 import org.geoserver.security.AdminRequest;
@@ -37,6 +42,7 @@ public class ThreadLocalsTransferTest extends GeoServerSystemTestSupport {
     @Override
     protected void setUpTestData(SystemTestData testData) throws Exception {
         // no test data needed for this test, only the spring context
+        testData.setUpSecurity();
     }
 
     @Before
@@ -53,7 +59,7 @@ public class ThreadLocalsTransferTest extends GeoServerSystemTestSupport {
     public void cleanupThreadLocals() {
         Dispatcher.REQUEST.remove();
         AdminRequest.finish();
-        LocalLayer.remove();
+        LocalPublished.remove();
         LocalWorkspace.remove();
         SecurityContextHolder.getContext().setAuthentication(null);
     }
@@ -64,7 +70,7 @@ public class ThreadLocalsTransferTest extends GeoServerSystemTestSupport {
         final Request request = new Request();
         Dispatcher.REQUEST.set(request);
         final LayerInfo layer = new LayerInfoImpl();
-        LocalLayer.set(layer);
+        LocalPublished.set(layer);
         final WorkspaceInfo ws = new WorkspaceInfoImpl();
         LocalWorkspace.set(ws);
         final Object myState = new Object();
@@ -87,7 +93,7 @@ public class ThreadLocalsTransferTest extends GeoServerSystemTestSupport {
                 // check all thread locals have been applied to the current thread
                 assertSame(request, Dispatcher.REQUEST.get());
                 assertSame(myState, AdminRequest.get());
-                assertSame(layer, LocalLayer.get());
+                assertSame(layer, LocalPublished.get());
                 assertSame(ws, LocalWorkspace.get());
                 assertSame(auth, SecurityContextHolder.getContext().getAuthentication());
             }
@@ -98,7 +104,7 @@ public class ThreadLocalsTransferTest extends GeoServerSystemTestSupport {
                 // check all thread locals have been cleaned up from the current thread
                 assertNull(Dispatcher.REQUEST.get());
                 assertNull(AdminRequest.get());
-                assertNull(LocalLayer.get());
+                assertNull(LocalPublished.get());
                 assertNull(LocalWorkspace.get());
                 assertNull(SecurityContextHolder.getContext().getAuthentication());
             }

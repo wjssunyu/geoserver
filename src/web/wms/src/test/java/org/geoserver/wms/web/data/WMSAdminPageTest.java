@@ -1,4 +1,4 @@
-/* (c) 2014 Open Source Geospatial Foundation - all rights reserved
+/* (c) 2014 - 2016 Open Source Geospatial Foundation - all rights reserved
  * (c) 2001 - 2013 OpenPlans
  * This code is licensed under the GPL 2.0 license, available at the root
  * application directory.
@@ -16,6 +16,7 @@ import org.apache.wicket.markup.html.form.ValidationErrorFeedback;
 import org.apache.wicket.util.tester.FormTester;
 import org.geoserver.web.GeoServerHomePage;
 import org.geoserver.web.GeoServerWicketTestSupport;
+import org.geoserver.wms.WMS;
 import org.geoserver.wms.WMSInfo;
 import org.geoserver.wms.web.WMSAdminPage;
 import org.junit.Before;
@@ -66,7 +67,7 @@ public class WMSAdminPageTest extends GeoServerWicketTestSupport {
         ft.submit("submit");
         List errors = tester.getMessages(FeedbackMessage.ERROR);
         assertEquals(1, errors.size());
-        assertTrue(((ValidationErrorFeedback)errors.get(0)).getMessage().contains("bla"));
+        assertTrue(((ValidationErrorFeedback)errors.get(0)).getMessage().toString().contains("bla"));
         tester.assertRenderedPage(WMSAdminPage.class);
     }
 
@@ -78,5 +79,38 @@ public class WMSAdminPageTest extends GeoServerWicketTestSupport {
         ft.setValue("bBOXForEachCRS", true);
         ft.submit("submit");
         assertTrue(wms.isBBOXForEachCRS());
+    }
+
+    
+    @Test
+    public void testRootLayerTitle() throws Exception {
+        tester.startPage(WMSAdminPage.class);
+        FormTester ft = tester.newFormTester("form");
+        ft.setValue("rootLayerTitle", "test");
+        ft.setValue("rootLayerAbstract", "abstract test");
+        ft.submit("submit");
+        tester.assertNoErrorMessage();
+        assertEquals(wms.getRootLayerTitle(), "test");
+        assertEquals(wms.getRootLayerAbstract(), "abstract test");
+    }
+
+    @Test
+    public void testDynamicStylingDisabled() throws Exception {
+        assertFalse(wms.isDynamicStylingDisabled());
+        tester.startPage(WMSAdminPage.class);
+        FormTester ft = tester.newFormTester("form");
+        ft.setValue("dynamicStyling.disabled", true);
+        ft.submit("submit");
+        assertTrue(wms.isDynamicStylingDisabled());
+    }
+
+    @Test
+    public void testFeaturesReprojectionDisabled() throws Exception {
+        assertFalse(wms.isFeaturesReprojectionDisabled());
+        tester.startPage(WMSAdminPage.class);
+        FormTester ft = tester.newFormTester("form");
+        ft.setValue("disableFeaturesReproject", true);
+        ft.submit("submit");
+        assertTrue(wms.isFeaturesReprojectionDisabled());
     }
 }

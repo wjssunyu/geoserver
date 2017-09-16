@@ -1,4 +1,4 @@
-/* (c) 2014 Open Source Geospatial Foundation - all rights reserved
+/* (c) 2014 - 2015 Open Source Geospatial Foundation - all rights reserved
  * (c) 2001 - 2014 OpenPlans
  * This code is licensed under the GPL 2.0 license, available at the root
  * application directory.
@@ -16,6 +16,7 @@ import org.geoserver.config.GeoServer;
 import org.geoserver.config.util.AuthorityURLInfoInfoListConverter;
 import org.geoserver.config.util.LayerIdentifierInfoListConverter;
 import org.geoserver.config.util.XStreamPersister;
+import org.geoserver.config.util.XStreamPersister.ServiceInfoConverter;
 import org.geoserver.config.util.XStreamServiceLoader;
 import org.geoserver.platform.GeoServerResourceLoader;
 import org.geoserver.wms.WMSInfo.WMSInterpolation;
@@ -53,8 +54,19 @@ public class WMSXStreamLoader extends XStreamServiceLoader<WMSInfo> {
     @Override
     protected void initXStreamPersister(XStreamPersister xp, GeoServer gs) {
         super.initXStreamPersister(xp, gs);
-        xp.getXStream().alias("wms", WMSInfo.class, WMSInfoImpl.class);
-        xp.getXStream().registerConverter(new WMSInfoConverter(xp.getXStream()));
+        initXStreamPersister(xp);
+    }
+
+    /**
+     * Sets up aliases and allowed types for the xstream persister
+     * @param xs
+     */
+    public static void initXStreamPersister(XStreamPersister xp) {
+        XStream xs = xp.getXStream();
+        xs.alias("wms", WMSInfo.class, WMSInfoImpl.class);
+        xs.registerConverter(new WMSInfoConverter(xp));
+        xs.addDefaultImplementation(WatermarkInfoImpl.class, WatermarkInfo.class);
+        xs.allowTypes(new Class[] { WatermarkInfo.class, WatermarkInfoImpl.class });
     }
 
     @Override
@@ -92,10 +104,10 @@ public class WMSXStreamLoader extends XStreamServiceLoader<WMSInfo> {
      * 
      * @since 2.1.3
      */
-    class WMSInfoConverter extends ReflectionConverter {
+    static class WMSInfoConverter extends ServiceInfoConverter {
 
-        public WMSInfoConverter(XStream xs) {
-            super(xs.getMapper(), xs.getReflectionProvider());
+        public WMSInfoConverter(XStreamPersister xp) {
+            xp.super(WMSInfo.class);
         }
 
         @Override

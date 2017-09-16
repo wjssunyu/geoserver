@@ -1,4 +1,4 @@
-/* (c) 2014 Open Source Geospatial Foundation - all rights reserved
+/* (c) 2014-2015 Open Source Geospatial Foundation - all rights reserved
  * (c) 2001 - 2013 OpenPlans
  * This code is licensed under the GPL 2.0 license, available at the root
  * application directory.
@@ -31,7 +31,6 @@ import javax.imageio.spi.ImageOutputStreamSpi;
 import javax.imageio.stream.ImageOutputStream;
 import javax.media.jai.ImageLayout;
 import javax.media.jai.JAI;
-import javax.media.jai.operator.FormatDescriptor;
 
 import org.geotools.image.ImageWorker;
 import org.geotools.resources.image.ImageUtilities;
@@ -76,7 +75,7 @@ final class TurboJpegImageWorker extends ImageWorker {
      * 
      * @param destination where to write the internal {@link #image} as a JPEG.
      * @param compressionRate percentage of compression.
-     * @return this {@link ImageWorker}.
+     * 
      * @throws IOException In case an error occurs during the search for an {@link ImageOutputStream} or during the eoncding process.
      */
     public final void writeTurboJPEG(final OutputStream destination, final float compressionRate)
@@ -169,7 +168,9 @@ final class TurboJpegImageWorker extends ImageWorker {
         layout.setSampleModel(sm);
         
         // Forcing the output format to remove the alpha Band
-        image = FormatDescriptor.create(image, DataBuffer.TYPE_BYTE, hints);
+        ImageWorker worker = new ImageWorker(image);
+        worker.setRenderingHints(hints);
+        image = worker.format(DataBuffer.TYPE_BYTE).getRenderedImage();
     }
 
 }

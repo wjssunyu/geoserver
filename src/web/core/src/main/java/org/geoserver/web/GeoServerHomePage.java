@@ -1,4 +1,4 @@
-/* (c) 2014 Open Source Geospatial Foundation - all rights reserved
+/* (c) 2014 - 2016 Open Source Geospatial Foundation - all rights reserved
  * (c) 2001 - 2013 OpenPlans
  * This code is licensed under the GPL 2.0 license, available at the root
  * application directory.
@@ -23,7 +23,6 @@ import org.apache.wicket.model.LoadableDetachableModel;
 import org.apache.wicket.model.Model;
 import org.apache.wicket.model.ResourceModel;
 import org.apache.wicket.model.StringResourceModel;
-import org.apache.wicket.protocol.http.WebRequest;
 import org.geoserver.catalog.Catalog;
 import org.geoserver.catalog.LayerInfo;
 import org.geoserver.catalog.StoreInfo;
@@ -32,7 +31,6 @@ import org.geoserver.config.ContactInfo;
 import org.geoserver.config.GeoServer;
 import org.geoserver.config.ServiceInfo;
 import org.geoserver.platform.GeoServerExtensions;
-import org.geoserver.security.GeoServerSecurityFilterChainProxy;
 import org.geoserver.security.GeoServerSecurityManager;
 import org.geoserver.web.data.layer.LayerPage;
 import org.geoserver.web.data.layer.NewLayerPage;
@@ -42,7 +40,6 @@ import org.geoserver.web.data.workspace.WorkspaceNewPage;
 import org.geoserver.web.data.workspace.WorkspacePage;
 import org.opengis.filter.Filter;
 import org.springframework.security.core.Authentication;
-import org.springframework.security.core.GrantedAuthority;
 
 import com.google.common.base.Stopwatch;
 
@@ -60,7 +57,7 @@ import com.google.common.base.Stopwatch;
  * @author Andrea Aime - TOPP
  * 
  */
-public class GeoServerHomePage extends GeoServerBasePage {
+public class GeoServerHomePage extends GeoServerBasePage implements GeoServerUnlockablePage {
 
     @SuppressWarnings({ "rawtypes", "unchecked" })
     public GeoServerHomePage() {
@@ -75,7 +72,7 @@ public class GeoServerHomePage extends GeoServerBasePage {
             String contactEmail = contact.getContactEmail();
             HashMap<String, String>params = new HashMap<String, String>();
             params.put("version", version);
-            params.put("contactEmail", contactEmail);
+            params.put("contactEmail", (contactEmail == null ? "geoserver@example.org" : contactEmail));
             Label label = new Label("footerMessage", new StringResourceModel("GeoServerHomePage.footer", this, new Model(params)));
             label.setEscapeModelStrings(false);
             add(label);

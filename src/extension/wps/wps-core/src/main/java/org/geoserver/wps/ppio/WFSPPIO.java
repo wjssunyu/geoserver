@@ -1,20 +1,24 @@
-/* (c) 2014 Open Source Geospatial Foundation - all rights reserved
+/* (c) 2014 - 2015 Open Source Geospatial Foundation - all rights reserved
  * (c) 2001 - 2013 OpenPlans
  * This code is licensed under the GPL 2.0 license, available at the root
  * application directory.
  */
 package org.geoserver.wps.ppio;
 
+import java.io.ByteArrayInputStream;
 import java.io.InputStream;
 import java.io.StringReader;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.logging.Level;
+import java.util.logging.Logger;
 
 import javax.xml.namespace.QName;
 
 import net.opengis.wfs.FeatureCollectionType;
 import net.opengis.wfs.WfsFactory;
 
+import org.apache.commons.io.output.ByteArrayOutputStream;
 import org.geoserver.feature.RetypingFeatureCollection;
 import org.geotools.data.crs.ForceCoordinateSystemFeatureResults;
 import org.geotools.data.simple.SimpleFeatureCollection;
@@ -22,8 +26,9 @@ import org.geotools.data.simple.SimpleFeatureIterator;
 import org.geotools.data.store.ReprojectingFeatureCollection;
 import org.geotools.feature.FeatureCollection;
 import org.geotools.feature.simple.SimpleFeatureTypeBuilder;
-import org.geotools.gml3.GMLConfiguration;
+import org.geotools.gml3.GML;
 import org.geotools.referencing.CRS;
+import org.geotools.util.logging.Logging;
 import org.geotools.wfs.v1_0.WFSConfiguration;
 import org.geotools.xml.Configuration;
 import org.geotools.xml.Encoder;
@@ -35,6 +40,7 @@ import org.opengis.feature.type.GeometryDescriptor;
 import org.opengis.referencing.crs.CoordinateReferenceSystem;
 import org.xml.sax.ContentHandler;
 
+import com.google.common.io.ByteStreams;
 import com.vividsolutions.jts.geom.Geometry;
 
 /**
@@ -43,7 +49,10 @@ import com.vividsolutions.jts.geom.Geometry;
 public class WFSPPIO extends XMLPPIO {
 
     Configuration configuration;
-
+    private static final Logger LOGGER = Logging.getLogger(WFSPPIO.class);
+    private static final String METADATA = GML.metaDataProperty.getLocalPart();
+    private static final String BOUNDEDBY = GML.boundedBy.getLocalPart();
+    private static final String LOCATION = GML.location.getLocalPart();
     protected WFSPPIO(Configuration configuration, String mimeType, QName element) {
         super( FeatureCollectionType.class, FeatureCollection.class, mimeType, element);
         this.configuration = configuration;
@@ -51,9 +60,26 @@ public class WFSPPIO extends XMLPPIO {
 
     @Override
     public Object decode(InputStream input) throws Exception {
-        Parser p = new Parser(configuration);
-        FeatureCollectionType fct = (FeatureCollectionType) p.parse(input);
-        return decode(fct);
+        Parser p = getParser(configuration);
+        byte[] streamBytes = null;
+        if(LOGGER.isLoggable(Level.FINEST)){
+            //allow WFS result to be logged for debugging purposes
+            //WFS result can be large, so use only for debugging
+            ByteArrayOutputStream outputStream = new ByteArrayOutputStream();
+	    ByteStreams.copy(input, outputStream);
+	    streamBytes = outputStream.toByteArray();
+	    input = new ByteArrayInputStream(streamBytes);	    	    
+        }
+        Object result = p.parse(input);
+        if(result instanceof FeatureCollectionType){
+            FeatureCollectionType fct = (FeatureCollectionType) result;
+            return decode(fct);            
+        }else{
+            if(LOGGER.isLoggable(Level.FINEST)){
+        	LOGGER.log(Level.FINEST, "Decoding the following WFS response did not result in an object of type FeatureCollectionType: \n"+new String(streamBytes));
+            }
+            throw new IllegalArgumentException("Decoded WFS result is not a feature collection, got a: "+result);
+        }
     }
     
     @Override
@@ -61,7 +87,7 @@ public class WFSPPIO extends XMLPPIO {
         // xml parsing will most likely return it as parsed already, but if CDATA is used or if
         // it's a KVP parse it will be a string instead
         if(input instanceof String) {
-            Parser p = new Parser(configuration);
+            Parser p = getParser(configuration);
             input = p.parse(new StringReader((String) input));
         }
         
@@ -102,18 +128,20 @@ public class WFSPPIO extends XMLPPIO {
      * It is not the best approach, but works in most cases, whilst not doing it would break
      * the code in most cases. Would be better to find a more general approach...
      * @param fc
-     * @return
+     *
      */
     private SimpleFeatureCollection eliminateFeatureBounds(SimpleFeatureCollection fc) {
         final SimpleFeatureType original = fc.getSchema();
+        
         List<String> names = new ArrayList<String>();
-        boolean alternateGeometry = true;
+        boolean alternateGeometry = false;
         for(AttributeDescriptor ad : original.getAttributeDescriptors()) {
             final String name = ad.getLocalName();
-            if(!"boundedBy".equals(name) && !"metadataProperty".equals(name)) {
+
+            if(!BOUNDEDBY.equals(name) && !METADATA.equals(name)) {
                 names.add(name);
             }
-            if(!"location".equals(name) && ad instanceof GeometryDescriptor) {
+            if(!LOCATION.equals(name) && ad instanceof GeometryDescriptor) {
                 alternateGeometry = true;
             }
         }
@@ -124,7 +152,7 @@ public class WFSPPIO extends XMLPPIO {
         }
         
         if(names.size() < original.getDescriptors().size()) {
-            String[] namesArray = (String[]) names.toArray(new String[names.size()]);
+            String[] namesArray = names.toArray(new String[names.size()]);
             SimpleFeatureType target = SimpleFeatureTypeBuilder.retype(original, namesArray);
             return new RetypingFeatureCollection(fc, target);
         }
@@ -134,8 +162,7 @@ public class WFSPPIO extends XMLPPIO {
     /**
      * Gets the collection CRS, either from metadata or by scanning the collection contents
      * @param fc
-     * @return
-     * @throws Exception
+     *
      */
     CoordinateReferenceSystem getCollectionCRS(SimpleFeatureCollection fc) throws Exception {
         // this is unlikely to work for remote or embedded collections, but it's also easy to check

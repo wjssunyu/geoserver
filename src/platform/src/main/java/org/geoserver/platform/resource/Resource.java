@@ -1,4 +1,4 @@
-/* (c) 2014 Open Source Geospatial Foundation - all rights reserved
+/* (c) 2014-2015 Open Source Geospatial Foundation - all rights reserved
  * (c) 2014 OpenPlans
  * This code is licensed under the GPL 2.0 license, available at the root
  * application directory.
@@ -6,9 +6,12 @@
 package org.geoserver.platform.resource;
 
 import java.io.File;
+import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
 import java.util.List;
+
+import org.apache.commons.io.IOUtils;
 
 /**
  * Resource used for configuration storage.
@@ -49,21 +52,19 @@ public interface Resource {
     public interface Lock {
         /**
          * Releases the lock on the specified key
-         * 
-         * @param lockKey
          */
         public void release();
     }
 
     /**
-     * Resource path used by {@link ResourceStore.get}.
+     * Resource path used by {@link ResourceStore#get(String)}.
      * 
      * @return resource path
      */
     String path();
 
     /**
-     * Name of the resource denoted by {@link #getPath()} . This is the last name in the path name sequence corresponding to {@link File#getName()}.
+     * Name of the resource denoted by {@link #path()} . This is the last name in the path name sequence corresponding to {@link File#getName()}.
      * 
      * @return Resource name
      */
@@ -77,27 +78,18 @@ public interface Resource {
     Lock lock();
     
     /**
-     * Listen for changes to ResourceStore content.
-     * <p>
-     * Listeners can be configured to check for changes to individual files or directory contents.
-     * </p>
-     * <ul>
-     * <li>styles: listener receives events for any change to the contents of the styles directory</li>
-     * <li>user_projections/epsg.properties: listener notified for any change to the epsg.properties resource</li>
-     * </ul>
-     * <p>
-     * Notification is course grained, often just based on change of last modified time stamp, as such they are issued after the change has been
-     * performed.
-     * </p>
      * 
-     * @param listener Listener to receive change notification
+     * Registers listener with ResourceNotificationDispatcher.
+     * 
+     * @see ResourceNotificationDispatcher#addListener(String, ResourceListener)
      */
     void addListener( ResourceListener listener);
     
     /**
-     * Remove resource store content listener.
-     * @param path
-     * @param listener
+     * 
+     * Removes listener from ResourceNotificationDispatcher.
+     * 
+     * @see ResourceNotificationDispatcher#removeListener(String, ResourceListener)
      */
     void removeListener( ResourceListener listener);
     
@@ -169,7 +161,7 @@ public interface Resource {
      * The listed files exist (and may be DIRECTORY or RESOURCE items).
      * 
      * @see File#listFiles()
-     * @return List of directory contents, or null if this resource is not a directory
+     * @return List of directory contents, or an empty list for UNDEFINED or RESOURCE 
      */
     List<Resource> list();
 
@@ -179,21 +171,47 @@ public interface Resource {
      * @see File#exists()
      * @see File#isDirectory()
      * @see File#isFile()
-     * @return
+     *
      */
     Type getType();
     
     /**
-     * Delete the resource.
-     * @see File#delete()
-     * @return
+     * Deletes a resource, if the resource is a directory contents will be recursively deleted.
+     * 
+     * @return <code>true</code> if and only if the file is deleted
      */
     boolean delete();
     
     /**
      * Move the resource to the specified location.
      * @see File#renameTo(File)
-     * @return
+     *
      */
     boolean renameTo(Resource dest);
+    
+    
+    /**
+     * Returns a resource full contents as a byte array. Usage is suggested only if 
+     * the resource is known to be small (e.g. a configuration file).
+     * @return
+     * @throws IOException 
+     */
+    default byte[] getContents() throws IOException {
+        try(InputStream in = in()) {
+            return org.apache.commons.io.IOUtils.toByteArray(in);
+        }
+    }
+
+    /**
+     * Writes a resource contents as a byte array. Usage is suggested only if the resource
+     * is known to be small (e.g. a configuration file).
+     * @param byteArray
+     * @throws IOException
+     */
+    default void setContents(byte[] byteArray) throws IOException {
+        try(OutputStream os = out()) {
+            IOUtils.write(byteArray, os);
+        }
+    }
+
 }

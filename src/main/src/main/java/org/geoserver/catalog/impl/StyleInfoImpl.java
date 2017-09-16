@@ -9,6 +9,7 @@ import java.io.IOException;
 
 import org.geoserver.catalog.*;
 import org.geotools.styling.Style;
+import org.geotools.styling.StyledLayerDescriptor;
 import org.geotools.util.Version;
 
 public class StyleInfoImpl implements StyleInfo {
@@ -28,6 +29,8 @@ public class StyleInfoImpl implements StyleInfo {
     protected Version languageVersion = SLDHandler.VERSION_10;
 
     protected String filename;
+    
+    protected LegendInfo legend;
 
     protected transient Catalog catalog;
 
@@ -37,7 +40,11 @@ public class StyleInfoImpl implements StyleInfo {
     public StyleInfoImpl( Catalog catalog ) {
         this.catalog = catalog;
     }
-    
+
+    public Catalog getCatalog() {
+        return catalog;
+    }
+
     public void setCatalog(Catalog catalog) {
         this.catalog = catalog;
     }
@@ -100,6 +107,18 @@ public class StyleInfoImpl implements StyleInfo {
 
     public Style getStyle() throws IOException {
         return catalog.getResourcePool().getStyle( this );
+    }
+
+    public StyledLayerDescriptor getSLD() throws IOException {
+        return catalog.getResourcePool().getSld( this );
+    }
+    
+    public LegendInfo getLegend() {
+        return legend;
+    }
+    
+    public void setLegend(LegendInfo legend) {
+        this.legend = legend;
     }
 
     public void accept(CatalogVisitor visitor) {
@@ -165,7 +184,7 @@ public class StyleInfoImpl implements StyleInfo {
 
     @Override
     public String toString() {
-        return new StringBuilder(getClass().getSimpleName()).append('[').append(name).append(']')
+        return new StringBuilder(getClass().getSimpleName()).append('[').append(prefixedName()).append(']')
                 .toString();
     }
     
@@ -185,5 +204,14 @@ public class StyleInfoImpl implements StyleInfo {
         }
 
         return this;
+    }
+
+    @Override
+    public String prefixedName() {
+        if(workspace != null) {
+            return workspace.getName() + ":" + getName();
+        } else {
+            return getName();
+        }
     }
 }

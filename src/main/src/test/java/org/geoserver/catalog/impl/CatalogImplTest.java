@@ -1,4 +1,4 @@
-/* (c) 2014 Open Source Geospatial Foundation - all rights reserved
+/* (c) 2014 - 2015 Open Source Geospatial Foundation - all rights reserved
  * (c) 2001 - 2013 OpenPlans
  * This code is licensed under the GPL 2.0 license, available at the root
  * application directory.
@@ -27,7 +27,13 @@ import java.util.Comparator;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
+import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.ExecutorCompletionService;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.logging.Level;
+import java.util.logging.Logger;
 
 import org.geoserver.catalog.Catalog;
 import org.geoserver.catalog.CatalogException;
@@ -35,6 +41,7 @@ import org.geoserver.catalog.CatalogFactory;
 import org.geoserver.catalog.CatalogInfo;
 import org.geoserver.catalog.CoverageInfo;
 import org.geoserver.catalog.CoverageStoreInfo;
+import org.geoserver.catalog.DataLinkInfo;
 import org.geoserver.catalog.DataStoreInfo;
 import org.geoserver.catalog.FeatureTypeInfo;
 import org.geoserver.catalog.Keyword;
@@ -44,10 +51,14 @@ import org.geoserver.catalog.MetadataLinkInfo;
 import org.geoserver.catalog.MetadataMap;
 import org.geoserver.catalog.NamespaceInfo;
 import org.geoserver.catalog.Predicates;
+import org.geoserver.catalog.PublishedInfo;
 import org.geoserver.catalog.ResourceInfo;
+import org.geoserver.catalog.StoreInfo;
 import org.geoserver.catalog.StyleInfo;
 import org.geoserver.catalog.WMSLayerInfo;
 import org.geoserver.catalog.WMSStoreInfo;
+import org.geoserver.catalog.WMTSLayerInfo;
+import org.geoserver.catalog.WMTSStoreInfo;
 import org.geoserver.catalog.WorkspaceInfo;
 import org.geoserver.catalog.event.CatalogAddEvent;
 import org.geoserver.catalog.event.CatalogListener;
@@ -56,6 +67,7 @@ import org.geoserver.catalog.event.CatalogPostModifyEvent;
 import org.geoserver.catalog.event.CatalogRemoveEvent;
 import org.geoserver.catalog.util.CloseableIterator;
 import org.geotools.factory.CommonFactoryFinder;
+import org.geotools.util.logging.Logging;
 import org.junit.Before;
 import org.junit.Ignore;
 import org.junit.Test;
@@ -65,7 +77,6 @@ import org.opengis.filter.MultiValuedFilter.MatchAction;
 import org.opengis.filter.sort.SortBy;
 
 import com.google.common.collect.ImmutableSet;
-import com.google.common.collect.Iterables;
 import com.google.common.collect.Lists;
 import com.google.common.collect.Sets;
 
@@ -87,11 +98,14 @@ public class CatalogImplTest {
 
     protected CoverageStoreInfo cs;
     protected WMSStoreInfo wms;
+    protected WMTSStoreInfo wmtss;
     protected FeatureTypeInfo ft;
     protected CoverageInfo cv;
     protected WMSLayerInfo wl;
+    protected WMTSLayerInfo wmtsl;
     protected LayerInfo l;
     protected StyleInfo s;
+    protected StyleInfo defaultLineStyle;
     protected LayerGroupInfo lg;
     
     @Before
@@ -173,10 +187,26 @@ public class CatalogImplTest {
         wl.setName("wmsLayer");
         wl.setStore(wms);
         wl.setNamespace(ns);
+
+        wmtss = factory.createWebMapTileServer();
+        wmtss.setName("wmtsName");
+        wmtss.setType("WMTS");
+        wmtss.setCapabilitiesURL("http://fake.wmts.url");
+        wmtss.setWorkspace(ws);
+
+        wmtsl = factory.createWMTSLayer();
+        wmtsl.setEnabled(true);
+        wmtsl.setName("wmtsLayer");
+        wmtsl.setStore(wmtss);
+        wmtsl.setNamespace(ns);
         
         s = factory.createStyle();
         s.setName( "styleName" );
         s.setFilename( "styleFilename" );
+
+        defaultLineStyle = factory.createStyle();
+        defaultLineStyle.setName( StyleInfo.DEFAULT_LINE );
+        defaultLineStyle.setFilename( StyleInfo.DEFAULT_LINE+".sld" );
         
         l = factory.createLayer();
         l.setResource( ft );
@@ -215,6 +245,11 @@ public class CatalogImplTest {
         addWorkspace();
         catalog.add(wms);
     }
+
+    protected void addWMTSStore() {
+        addWorkspace();
+        catalog.add(wmtss);
+    }
     
     protected void addFeatureType() {
         addDataStore();
@@ -233,9 +268,19 @@ public class CatalogImplTest {
         addNamespace();
         catalog.add(wl);
     }
+
+    protected void addWMTSLayer() {
+        addWMTSStore();
+        addNamespace();
+        catalog.add(wmtsl);
+    }
     
     protected void addStyle() {
         catalog.add(s);
+    }
+
+    protected void addDefaultStyle() {
+        catalog.add(defaultLineStyle);
     }
     
     protected void addLayer() {
@@ -347,6 +392,16 @@ public class CatalogImplTest {
         assertFalse( ns == ns2 );
         assertEquals( ns, ns2 );
     }
+
+    @Test
+    public void testSetDefaultNamespaceInvalid() {
+        try {
+            catalog.setDefaultNamespace( ns );
+            fail("Default namespace must exist in catalog");
+        } catch (IllegalArgumentException e) {
+            assertEquals("No such namespace: 'wsName'", e.getMessage());
+        }
+    }
     
     @Test
     public void testModifyNamespace() {
@@ -402,6 +457,9 @@ public class CatalogImplTest {
         assertEquals( 1, l.modified.size() );
         assertEquals( catalog, l.modified.get(0).getSource());
         assertEquals( "defaultNamespace", l.modified.get(0).getPropertyNames().get(0));
+        assertEquals( 1, l.postModified.size() );
+        assertEquals( catalog, l.postModified.get(0).getSource());
+        assertEquals( "defaultNamespace", l.postModified.get(0).getPropertyNames().get(0));
         
         ns = catalog.getNamespaceByPrefix( "ns2Prefix" );
         ns.setURI( "changed");
@@ -412,6 +470,11 @@ public class CatalogImplTest {
         assertTrue(l.modified.get(1).getPropertyNames().get(0).equalsIgnoreCase("uri" ));
         assertTrue(l.modified.get(1).getOldValues().contains( "ns2URI" ));
         assertTrue(l.modified.get(1).getNewValues().contains( "changed" ));
+        assertEquals( 2, l.postModified.size() );
+        assertEquals( 1, l.postModified.get(1).getPropertyNames().size());
+        assertTrue(l.postModified.get(1).getPropertyNames().get(0).equalsIgnoreCase("uri" ));
+        assertTrue(l.postModified.get(1).getOldValues().contains( "ns2URI" ));
+        assertTrue(l.postModified.get(1).getNewValues().contains( "changed" ));
         
         assertTrue( l.removed.isEmpty() );
         catalog.remove( ns );
@@ -567,6 +630,16 @@ public class CatalogImplTest {
         assertFalse( ws == ws4 );
         assertEquals( ws, ws4 );
     }
+
+    @Test
+    public void testSetDefaultWorkspaceInvalid() {
+        try {
+            catalog.setDefaultWorkspace( ws );
+            fail("Default workspace must exist in catalog");
+        } catch (IllegalArgumentException e) {
+            assertEquals("No such workspace: 'wsName'", e.getMessage());
+        }
+    }
     
     @Test public void testModifyWorkspace() {
         catalog.add( ws );
@@ -606,6 +679,8 @@ public class CatalogImplTest {
         assertEquals( ws, l.added.get(0).getSource());
         assertEquals( catalog, l.modified.get(0).getSource());
         assertEquals( "defaultWorkspace", l.modified.get(0).getPropertyNames().get(0));
+        assertEquals( catalog, l.postModified.get(0).getSource());
+        assertEquals( "defaultWorkspace", l.postModified.get(0).getPropertyNames().get(0));
         
         ws = catalog.getWorkspaceByName( "ws2" );
         ws.setName( "changed");
@@ -615,6 +690,9 @@ public class CatalogImplTest {
         assertTrue(l.modified.get(1).getPropertyNames().contains( "name" ));
         assertTrue(l.modified.get(1).getOldValues().contains( "ws2" ));
         assertTrue(l.modified.get(1).getNewValues().contains( "changed" ));
+        assertTrue(l.postModified.get(1).getPropertyNames().contains( "name" ));
+        assertTrue(l.postModified.get(1).getOldValues().contains( "ws2" ));
+        assertTrue(l.postModified.get(1).getNewValues().contains( "changed" ));
         
         assertTrue( l.removed.isEmpty() );
         catalog.remove( ws );
@@ -662,15 +740,16 @@ public class CatalogImplTest {
         catalog.add( ds2 );
         assertEquals( 2, catalog.getDataStores().size() );
     }
-    
+
     @Test
     public void testAddDataStoreDefaultWorkspace() {
-        catalog.setDefaultWorkspace( ws );
-        
+        catalog.add(ws);
+        catalog.setDefaultWorkspace(ws);
+
         DataStoreInfo ds2 = catalog.getFactory().createDataStore();
-        ds2.setName( "ds2Name");
+        ds2.setName( "ds2Name" );
         catalog.add( ds2 );
-        
+
         assertEquals( ws, ds2.getWorkspace() );
     }
     
@@ -726,6 +805,41 @@ public class CatalogImplTest {
     }
     
     @Test
+    public void testGetStoreByName() {
+        addDataStore();
+        
+        StoreInfo ds2 = catalog.getStoreByName(ds.getName(), StoreInfo.class);
+        assertNotNull(ds2);
+        assertFalse( ds == ds2 );
+        assertEquals( ds, ds2 );
+        
+        StoreInfo ds3 = catalog.getStoreByName(ws, null, StoreInfo.class);
+        assertNotNull(ds3);
+        assertFalse( ds == ds3 );
+        assertEquals( ds, ds3 );
+        
+        StoreInfo ds4 = catalog.getStoreByName(ws, Catalog.DEFAULT, StoreInfo.class);
+        assertNotNull(ds4);
+        assertFalse( ds == ds4 );
+        assertEquals( ds, ds4 );
+        
+        StoreInfo ds5 = catalog.getStoreByName(Catalog.DEFAULT, Catalog.DEFAULT, StoreInfo.class);
+        assertNotNull(ds5);
+        assertFalse( ds == ds5 );
+        assertEquals( ds, ds5 );
+        
+        StoreInfo ds6 = catalog.getStoreByName((String)null, null, StoreInfo.class);
+        assertNotNull(ds6);
+        assertFalse( ds == ds6 );
+        assertEquals( ds, ds3 );
+        
+        StoreInfo ds7 = catalog.getStoreByName(Catalog.DEFAULT, Catalog.DEFAULT, StoreInfo.class);
+        assertNotNull(ds7);
+        assertFalse( ds == ds7 );
+        assertEquals( ds6, ds7 );
+    }
+    
+    @Test
     public void testModifyDataStore() {
         addDataStore();
         
@@ -775,6 +889,8 @@ public class CatalogImplTest {
         assertEquals( ds, l.added.get(0).getSource() );
         assertEquals( 1, l.modified.size() );
         assertEquals( catalog, l.modified.get(0).getSource() );
+        assertEquals( 1, l.postModified.size() );
+        assertEquals( catalog, l.postModified.get(0).getSource() );
         
         DataStoreInfo ds2 = catalog.getDataStoreByName( ds.getName() );
         ds2.setDescription( "changed" );
@@ -787,12 +903,23 @@ public class CatalogImplTest {
         assertEquals( ds2, me.getSource() );
         assertEquals( 1, me.getPropertyNames().size() );
         assertEquals( "description", me.getPropertyNames().get(0));
-        
+
         assertEquals( 1, me.getOldValues().size() );
         assertEquals( 1, me.getNewValues().size() );
-        
+
         assertEquals( "dsDescription", me.getOldValues().get(0));
         assertEquals( "changed", me.getNewValues().get(0));
+
+        CatalogPostModifyEvent pme = l.postModified.get(1);
+        assertEquals( ds2, pme.getSource() );
+        assertEquals( 1, pme.getPropertyNames().size() );
+        assertEquals( "description", pme.getPropertyNames().get(0));
+
+        assertEquals( 1, pme.getOldValues().size() );
+        assertEquals( 1, pme.getNewValues().size() );
+
+        assertEquals( "dsDescription", pme.getOldValues().get(0));
+        assertEquals( "changed", pme.getNewValues().get(0));
         
         assertEquals( 0, l.removed.size() );
         catalog.remove( ds );
@@ -887,6 +1014,13 @@ public class CatalogImplTest {
     }
 
     @Test
+    public void testAddWMTSLayer() {
+        assertTrue( catalog.getResources(WMTSLayerInfo.class).isEmpty() );
+        addWMTSLayer();
+        assertEquals( 1, catalog.getResources(WMTSLayerInfo.class).size() );
+    }
+
+    @Test
     public void testRemoveFeatureType() {
         addFeatureType();
         assertFalse( catalog.getFeatureTypes().isEmpty() );
@@ -894,8 +1028,7 @@ public class CatalogImplTest {
         try {
             catalog.getFeatureTypes().remove( ft );
             fail( "removing directly should cause exception");
-        }
-        catch( Exception e ) {}
+        } catch( Exception e ) {}
         
         catalog.remove( ft );
         assertTrue( catalog.getFeatureTypes().isEmpty() );
@@ -909,7 +1042,16 @@ public class CatalogImplTest {
         catalog.remove( wl );
         assertTrue( catalog.getResources(WMSLayerInfo.class).isEmpty() );
     }
-    
+
+    @Test
+    public void testRemoveWMTSLayer() {
+        addWMTSLayer();
+        assertFalse( catalog.getResources(WMTSLayerInfo.class).isEmpty() );
+
+        catalog.remove( wmtsl );
+        assertTrue( catalog.getResources(WMTSLayerInfo.class).isEmpty() );
+    }
+
     @Test
     public void testGetFeatureTypeById() {
         addFeatureType();
@@ -1044,6 +1186,35 @@ public class CatalogImplTest {
         assertEquals("application/json", ml5.getType());
     }
     
+    @Test
+    public void testModifyDataLinks() {
+        addFeatureType();
+        
+        FeatureTypeInfo ft2 = catalog.getFeatureTypeByName(ft.getName());
+        DataLinkInfo ml = catalog.getFactory().createDataLink();
+        ml.setContent("http://www.geoserver.org/meta");
+        ml.setType("text/plain");
+        ft2.getDataLinks().clear();
+        ft2.getDataLinks().add(ml);
+        catalog.save(ft2);
+        
+        FeatureTypeInfo ft3 = catalog.getFeatureTypeByName(ft.getName());
+        DataLinkInfo ml3 = ft3.getDataLinks().get(0);
+        ml3.setType("application/json");
+        
+        // do not save and grab another, the metadata link must not have been modified
+        FeatureTypeInfo ft4 = catalog.getFeatureTypeByName(ft.getName());
+        DataLinkInfo ml4 = ft4.getDataLinks().get(0);
+        assertEquals("text/plain", ml4.getType());
+        
+        
+        // now save and grab yet another, the modification must have happened
+        catalog.save(ft3);
+        FeatureTypeInfo ft5 = catalog.getFeatureTypeByName(ft.getName());
+        DataLinkInfo ml5 = ft5.getDataLinks().get(0);
+        assertEquals("application/json", ml5.getType());
+    }
+    
     
     @Test
     public void testFeatureTypeEvents() {
@@ -1074,6 +1245,11 @@ public class CatalogImplTest {
         assertTrue( l.modified.get(0).getPropertyNames().contains( "description"));
         assertTrue( l.modified.get(0).getOldValues().contains( "ftDescription"));
         assertTrue( l.modified.get(0).getNewValues().contains( "changed"));
+        assertEquals( 1, l.modified.size() );
+        assertEquals( ft, l.postModified.get(0).getSource() );
+        assertTrue( l.postModified.get(0).getPropertyNames().contains( "description"));
+        assertTrue( l.postModified.get(0).getOldValues().contains( "ftDescription"));
+        assertTrue( l.postModified.get(0).getNewValues().contains( "changed"));
         
         assertTrue( l.removed.isEmpty() );
         catalog.remove( ft );
@@ -1340,6 +1516,27 @@ public class CatalogImplTest {
     }
     
     @Test
+    public void testModifyLayerDefaultStyle() {
+        // create new style
+        CatalogFactory factory = catalog.getFactory();
+        StyleInfo s2 = factory.createStyle();
+        s2.setName("styleName2");
+        s2.setFilename("styleFilename2");
+        catalog.add(s2);
+
+        // change the layer style
+        addLayer();
+        LayerInfo l2 = catalog.getLayerByName( l.getName() );
+        l2.setDefaultStyle(catalog.getStyleByName("styleName2"));
+        catalog.save(l2);
+        
+        // get back and compare with itself
+        LayerInfo l3 = catalog.getLayerByName( l.getName() );
+        LayerInfo l4 = catalog.getLayerByName( l.getName() );
+        assertEquals(l3, l4);
+    }
+    
+    @Test
     public void testEnableLayer() {
         addLayer();
         
@@ -1383,6 +1580,11 @@ public class CatalogImplTest {
         assertTrue( tl.modified.get(0).getPropertyNames().contains( "path") );
         assertTrue( tl.modified.get(0).getOldValues().contains( null ) );
         assertTrue( tl.modified.get(0).getNewValues().contains( "newPath") );
+        assertEquals( 1, tl.postModified.size() );
+        assertEquals( l2, tl.postModified.get(0).getSource() );
+        assertTrue( tl.postModified.get(0).getPropertyNames().contains( "path") );
+        assertTrue( tl.postModified.get(0).getOldValues().contains( null ) );
+        assertTrue( tl.postModified.get(0).getNewValues().contains( "newPath") );
         
         assertTrue( tl.removed.isEmpty() );
         catalog.remove( l2 );
@@ -1497,8 +1699,7 @@ public class CatalogImplTest {
         s2.setWorkspace(ws);
         catalog.add(s2);
 
-        assertNull("style is not global, should't have been found",     
-                catalog.getStyleByName("styleNameWithWorkspace"));
+        assertNotNull(catalog.getStyleByName("styleNameWithWorkspace"));
         assertNotNull(catalog.getStyleByName(ws.getName(), "styleNameWithWorkspace"));
         assertNotNull(catalog.getStyleByName(ws, "styleNameWithWorkspace"));
         assertNull(catalog.getStyleByName((WorkspaceInfo)null, "styleNameWithWorkspace"));
@@ -1529,8 +1730,7 @@ public class CatalogImplTest {
         s2.setWorkspace(ws2);
         catalog.add(s2);
 
-        //none is global, so none should be returned
-        assertNull(catalog.getStyleByName("foo"));
+        assertEquals(s1, catalog.getStyleByName("foo"));
 
         assertEquals(s1, catalog.getStyleByName(ws.getName(), "foo"));
         assertEquals(s1, catalog.getStyleByName(ws, "foo"));
@@ -1594,6 +1794,29 @@ public class CatalogImplTest {
         s3 = catalog.getStyleByName( s2.getName() );
         assertEquals( s2, s3 );
     }
+
+    @Test
+    public void testModifyDefaultStyle() {
+        addWorkspace();
+        addDefaultStyle();
+        StyleInfo s = catalog.getStyleByName(StyleInfo.DEFAULT_LINE);
+
+        s.setName("foo");
+
+        try {
+            catalog.save(s);
+            fail("changing name of default style should fail");
+        }
+        catch( Exception e ) {}
+
+        s = catalog.getStyleByName(StyleInfo.DEFAULT_LINE);
+        s.setWorkspace(ws);
+        try {
+            catalog.save(s);
+            fail("changing workspace of default style should fail");
+        }
+        catch( Exception e ) {}
+    }
     
     @Test
     public void testRemoveStyle() {
@@ -1602,6 +1825,19 @@ public class CatalogImplTest {
         
         catalog.remove(s);
         assertTrue( catalog.getStyles().isEmpty() );
+    }
+
+    @Test
+    public void testRemoveDefaultStyle() {
+        addWorkspace();
+        addDefaultStyle();
+        StyleInfo s = catalog.getStyleByName(StyleInfo.DEFAULT_LINE);
+
+        try {
+            catalog.remove(s);
+            fail("removing default style should fail");
+        }
+        catch( Exception e ) {}
     }
     
     @Test
@@ -1618,12 +1854,18 @@ public class CatalogImplTest {
         s2.setFilename( "changed");
         
         assertTrue( l.modified.isEmpty() );
+        assertTrue( l.postModified.isEmpty() );
         catalog.save( s2 );
         assertEquals( 1, l.modified.size() );
         assertEquals( s2, l.modified.get(0).getSource() );
         assertTrue( l.modified.get(0).getPropertyNames().contains( "filename") );
         assertTrue( l.modified.get(0).getOldValues().contains( "styleFilename") );
         assertTrue( l.modified.get(0).getNewValues().contains( "changed") );
+        assertEquals( 1, l.postModified.size() );
+        assertEquals( s2, l.postModified.get(0).getSource() );
+        assertTrue( l.postModified.get(0).getPropertyNames().contains( "filename") );
+        assertTrue( l.postModified.get(0).getOldValues().contains( "styleFilename") );
+        assertTrue( l.postModified.get(0).getNewValues().contains( "changed") );
         
         assertTrue( l.removed.isEmpty() );
         catalog.remove( s2 );
@@ -1728,6 +1970,23 @@ public class CatalogImplTest {
         assertEquals( 2, catalog.getStores(WMSStoreInfo.class).size() );
     }
     
+    @Test
+    public void testAddWMTSStore() {
+        assertTrue( catalog.getStores(WMTSStoreInfo.class).isEmpty() );
+        addWMTSStore();
+        assertEquals( 1, catalog.getStores(WMTSStoreInfo.class).size() );
+
+        WMTSStoreInfo retrieved = catalog.getStore(wmtss.getId(), WMTSStoreInfo.class);
+        assertNotNull(retrieved);
+
+        WMTSStoreInfo wmts2 = catalog.getFactory().createWebMapTileServer();
+        wmts2.setName( "wmts2Name" );
+        wmts2.setWorkspace( ws );
+
+        catalog.add( wmts2 );
+        assertEquals( 2, catalog.getStores(WMTSStoreInfo.class).size() );
+    }
+
     protected int GET_LAYER_BY_ID_WITH_CONCURRENT_ADD_TEST_COUNT = 500;
     private static final int GET_LAYER_BY_ID_WITH_CONCURRENT_ADD_THREAD_COUNT = 10;
 
@@ -1735,7 +1994,6 @@ public class CatalogImplTest {
      * This test cannot work, the catalog subsystem is not thread safe, that's why we have
      * the configuration locks. Re-enable when the catalog subsystem is made thread safe.
      * 
-     * @throws Exception
      */
     @Test
     @Ignore 
@@ -2135,6 +2393,10 @@ public class CatalogImplTest {
         assertEquals(lg2.getLayers(), lg2.layers());
         assertEquals(lg2.getStyles(), lg2.styles());
         
+        lg2.setMode(LayerGroupInfo.Mode.OPAQUE_CONTAINER);
+        assertEquals(lg2.getLayers(), lg2.layers());
+        assertEquals(lg2.getStyles(), lg2.styles());
+        
         lg2.setMode(LayerGroupInfo.Mode.NAMED);
         assertEquals(lg2.getLayers(), lg2.layers());
         assertEquals(lg2.getStyles(), lg2.styles());
@@ -2159,12 +2421,35 @@ public class CatalogImplTest {
         assertEquals(l, lg2.layers().iterator().next());
         assertEquals(s, lg2.styles().iterator().next());        
     }
+
+    @Test
+    public void testRemoveLayerGroupInLayerGroup() throws Exception {
+        addLayerGroup();
+
+        LayerGroupInfo lg2 = catalog.getFactory().createLayerGroup();
+
+        lg2.setName("layerGroup2");
+        lg2.getLayers().add(lg);
+        lg2.getStyles().add(s);
+        catalog.add(lg2);
+
+
+        try {
+            catalog.remove(lg);
+            fail("should have failed because lg is in another lg");
+        }
+        catch(IllegalArgumentException expected) {}
+
+        //removing the containing layer first should work
+        catalog.remove(lg2);
+        catalog.remove(lg);
+    }
     
     static class TestListener implements CatalogListener {
-
-        public List<CatalogAddEvent> added = new ArrayList();
-        public List<CatalogModifyEvent> modified = new ArrayList();
-        public List<CatalogRemoveEvent> removed = new ArrayList();
+        public List<CatalogAddEvent> added = new CopyOnWriteArrayList<>();
+        public List<CatalogModifyEvent> modified = new CopyOnWriteArrayList<>();
+        public List<CatalogPostModifyEvent> postModified = new CopyOnWriteArrayList<>();
+        public List<CatalogRemoveEvent> removed = new CopyOnWriteArrayList<>();
         
         public void handleAddEvent(CatalogAddEvent event) {
             added.add( event );
@@ -2175,6 +2460,7 @@ public class CatalogImplTest {
         }
 
         public void handlePostModifyEvent(CatalogPostModifyEvent event) {
+            postModified.add( event );
         }
         
         public void handleRemoveEvent(CatalogRemoveEvent event) {
@@ -2665,6 +2951,10 @@ public class CatalogImplTest {
 
     @Test 
     public void testFullTextSearch() {
+        // test layer title search
+        ft.setTitle("Global .5 deg Air Temperature [C]");
+        cv.setTitle("Global .5 deg Dewpoint Depression [C]");
+
         ft.setDescription("FeatureType description");
         ft.setAbstract("GeoServer OpenSource GIS");
         cv.setDescription("Coverage description");
@@ -2691,6 +2981,104 @@ public class CatalogImplTest {
 
         filter = Predicates.fullTextSearch("geotools");
         assertEquals(newHashSet(l2), asSet(catalog.list(LayerInfo.class, filter)));
+
+
+        filter = Predicates.fullTextSearch("Global");
+        assertEquals(newHashSet(l, l2), asSet(catalog.list(LayerInfo.class, filter)));
+
+        filter = Predicates.fullTextSearch("Temperature");
+        assertEquals(newHashSet(l), asSet(catalog.list(LayerInfo.class, filter)));
+
+        filter = Predicates.fullTextSearch("Depression");
+        assertEquals(newHashSet(l2), asSet(catalog.list(LayerInfo.class, filter)));
+    }
+    
+    @Test 
+    public void testFullTextSearchLayerGroupTitle() {
+        addLayer();
+        // geos-6882
+        lg.setTitle("LayerGroup title");
+        catalog.add(lg);
+        
+        // test layer group title and abstract search
+        Filter filter = Predicates.fullTextSearch("title");
+        assertEquals(newHashSet(lg), asSet(catalog.list(LayerGroupInfo.class, filter)));
+    }
+    
+    @Test 
+    public void testFullTextSearchLayerGroupName() {
+        addLayer();
+        // geos-6882
+        catalog.add(lg);
+        Filter filter = Predicates.fullTextSearch("Group");
+        assertEquals(newHashSet(lg), asSet(catalog.list(LayerGroupInfo.class, filter)));
+    }
+    
+    @Test 
+    public void testFullTextSearchLayerGroupAbstract() {
+        addLayer();
+        lg.setAbstract("GeoServer OpenSource GIS");
+        catalog.add(lg);
+        Filter filter = Predicates.fullTextSearch("geoserver");
+        assertEquals(newHashSet(lg), asSet(catalog.list(LayerGroupInfo.class, filter)));
+    }
+
+    @Test
+    public void testFullTextSearchKeywords() {
+        ft.getKeywords().add(new Keyword("air_temp"));
+        ft.getKeywords().add(new Keyword("temperatureAir"));
+        cv.getKeywords().add(new Keyword("dwpt_dprs"));
+        cv.getKeywords().add(new Keyword("temperatureDewpointDepression"));
+        
+        l.setResource(ft);
+        addLayer();
+        catalog.add(cs);
+        catalog.add(cv);
+        LayerInfo l2 = newLayer(cv, s);
+        catalog.add(l2);
+
+        Filter filter = Predicates.fullTextSearch("temperature");
+        assertEquals(newHashSet(l, l2), asSet(catalog.list(LayerInfo.class, filter)));
+        assertEquals(newHashSet(ft, cv), asSet(catalog.list(ResourceInfo.class, filter)));
+        assertEquals(newHashSet(ft), asSet(catalog.list(FeatureTypeInfo.class, filter)));
+        assertEquals(newHashSet(cv), asSet(catalog.list(CoverageInfo.class, filter)));
+
+        filter = Predicates.fullTextSearch("air");
+        assertEquals(newHashSet(l), asSet(catalog.list(LayerInfo.class, filter)));
+        assertEquals(newHashSet(ft), asSet(catalog.list(ResourceInfo.class, filter)));
+        assertEquals(newHashSet(ft), asSet(catalog.list(FeatureTypeInfo.class, filter)));
+        assertEquals(newHashSet(), asSet(catalog.list(CoverageInfo.class, filter)));
+
+        filter = Predicates.fullTextSearch("dewpoint");
+        assertEquals(newHashSet(l2), asSet(catalog.list(LayerInfo.class, filter)));
+        assertEquals(newHashSet(cv), asSet(catalog.list(ResourceInfo.class, filter)));
+        assertEquals(newHashSet(), asSet(catalog.list(FeatureTypeInfo.class, filter)));
+        assertEquals(newHashSet(cv), asSet(catalog.list(CoverageInfo.class, filter)));
+
+        filter = Predicates.fullTextSearch("pressure");
+        assertEquals(newHashSet(), asSet(catalog.list(LayerInfo.class, filter)));
+        assertEquals(newHashSet(), asSet(catalog.list(ResourceInfo.class, filter)));
+        assertEquals(newHashSet(), asSet(catalog.list(FeatureTypeInfo.class, filter)));
+        assertEquals(newHashSet(), asSet(catalog.list(CoverageInfo.class, filter)));
+    }
+    
+    @Test
+    public void testFullTextSearchAddedKeyword() {
+        ft.getKeywords().add(new Keyword("air_temp"));
+        ft.getKeywords().add(new Keyword("temperatureAir"));
+        
+        l.setResource(ft);
+        addLayer();
+        
+        LayerInfo lproxy = catalog.getLayer(l.getId());
+        FeatureTypeInfo ftproxy = (FeatureTypeInfo)lproxy.getResource();
+        
+        ftproxy.getKeywords().add(new Keyword("newKeyword"));
+        catalog.save(ftproxy);
+
+        Filter filter = Predicates.fullTextSearch("newKeyword");
+        assertEquals(newHashSet(ftproxy), asSet(catalog.list(FeatureTypeInfo.class, filter)));
+        assertEquals(newHashSet(lproxy), asSet(catalog.list(LayerInfo.class, filter)));
     }
 
     private <T> Set<T> asSet(CloseableIterator<T> list) {
@@ -2729,6 +3117,94 @@ public class CatalogImplTest {
         ft2.setName(name);
         ft2.setStore(ds);
         return ft2;
+    }
+
+    @Test
+    public void testConcurrentCatalogModification() throws Exception {
+        Logger logger = Logging.getLogger(CatalogImpl.class);
+        final int tasks = 8;
+        ExecutorService executor = Executors.newFixedThreadPool(tasks / 2);
+        Level previousLevel = logger.getLevel();
+        // clear previous listeners
+        new ArrayList<>(catalog.getListeners()).forEach(l -> catalog.removeListener(l));
+        try {
+            // disable logging for this test, it will stay a while in case of failure otherwise
+            logger.setLevel(Level.OFF);
+            ExecutorCompletionService<Void> completionService = new ExecutorCompletionService<>(executor);
+            for (int i = 0; i < tasks; i++) {
+                 completionService.submit(() -> {
+                     // attach listeners
+                     List<TestListener> listeners = new ArrayList<>();
+                     for (int j = 0; j < 3; j++) {
+                         TestListener tl = new TestListener();
+                         listeners.add(tl);
+                         catalog.addListener(tl);
+                     }
+    
+                     // simulate catalog removals, check the events get to destination
+                     CatalogInfo catalogInfo = new CoverageInfoImpl();
+                     catalog.fireRemoved(catalogInfo);
+                     // make sure each listener actually got the message
+                     for (TestListener testListener : listeners) {
+                         assertTrue("Did not find the expected even in the listener", 
+                                 testListener.removed.stream().anyMatch(event -> event.getSource() == catalogInfo));
+                     }
+    
+                     // clear the listeners
+                     listeners.forEach(l -> catalog.removeListener(l));
+                 }, null);
+            }
+            for (int i = 0; i < tasks; ++i) {
+                completionService.take().get();
+            }
+        } finally {
+            executor.shutdown();
+            logger.setLevel(previousLevel);
+        }
+    }
+    
+    @Test
+    public void testChangeLayerGroupOrder() {
+        addLayerGroup();
+        
+        // create second layer
+        FeatureTypeInfo ft2 = catalog.getFactory().createFeatureType();
+        ft2.setName("ft2Name");
+        ft2.setStore( ds );
+        ft2.setNamespace(ns);
+        catalog.add( ft2 );
+        LayerInfo l2 = catalog.getFactory().createLayer();
+        l2.setResource( ft2 );
+        l2.setDefaultStyle( s );
+        catalog.add(l2);
+        
+        // add to the group
+        LayerGroupInfo group = catalog.getLayerGroupByName(lg.getName());
+        group.getLayers().add(l2);
+        group.getStyles().add(null);
+        catalog.save(group);
+        
+        // change the layer group order
+        group = catalog.getLayerGroupByName(lg.getName());
+        PublishedInfo pi = group.getLayers().remove(1);
+        group.getLayers().add(0, pi);
+        catalog.save(group);
+        
+        // create a new style
+        StyleInfo s2 = catalog.getFactory().createStyle();
+        s2.setName( "s2Name");
+        s2.setFilename( "s2Filename");
+        catalog.add( s2 );
+        
+        // change the default style of l
+        LayerInfo ll = catalog.getLayerByName(l.prefixedName());
+        ll.setDefaultStyle(catalog.getStyleByName(s2.getName()));
+        catalog.save(ll);
+        
+        // now check that the facade can be compared to itself
+        LayerGroupInfo g1 = catalog.getFacade().getLayerGroupByName(lg.getName());
+        LayerGroupInfo g2 = catalog.getFacade().getLayerGroupByName(lg.getName());
+        assertTrue(LayerGroupInfo.equals(g1, g2));
     }
 
 }

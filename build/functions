@@ -54,7 +54,14 @@ function upload_installer() {
 
   if [ -z $SKIP_UPLOAD ]; then
     echo "uploading $file"
-    scp $ssh_opts -P $DIST_PORT $file $DIST_USER@$DIST_HOST:$DIST_PATH/$tag
+    # add an extra / to beginning of file path to overcome issue with MinGW text substitution
+    # where the :/ remote path is converted to ;z: (and connection fails to resolve hostname)
+    # http://www.mingw.org/wiki/Posix_path_conversion
+    echo "scp $ssh_opts -P $DIST_PORT $file $DIST_USER@$DIST_HOST:/$DIST_PATH/$tag"
+    scp $ssh_opts -P $DIST_PORT $file $DIST_USER@$DIST_HOST:/$DIST_PATH/$tag
+    # set access permissions for www
+    echo "ssh $ssh_opts -p $DIST_PORT $DIST_USER@$DIST_HOST \"chmod 0644 '$DIST_PATH/$tag/$file'\""
+    ssh $ssh_opts -p $DIST_PORT $DIST_USER@$DIST_HOST "chmod 0644 '$DIST_PATH/$tag/$file'"
   fi
 }
 
@@ -104,7 +111,7 @@ function get_pom_version() {
 # gets the jira id for a version named <tag>
 function get_jira_id() {
   local tag=$1
-  local jira_id=`curl -s -G $JIRA_REST/project/$JIRA_PROJ/versions | tr "{" "\n" | grep "\"$tag\"" | tr "," "\n" | grep "\"id\"" | sed 's/"id": *"\([0-9]\+\).*/\1/g'`
+  local jira_id=`curl -s -G $JIRA_REST/project/$JIRA_PROJ/versions | tr "{" "\n" | grep -F "\"$tag\"" | tr "," "\n" | grep "\"id\"" | sed 's/"id": *"\([0-9]\+\).*/\1/g'`
 
   #sed 's/"id": *\([0-9]*\).*/\1/g'`
   if [ ! -z $jira_id ]; then

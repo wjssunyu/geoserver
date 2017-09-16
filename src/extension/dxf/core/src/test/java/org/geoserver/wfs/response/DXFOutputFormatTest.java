@@ -1,4 +1,4 @@
-/* (c) 2014 Open Source Geospatial Foundation - all rights reserved
+/* (c) 2014 - 2017 Open Source Geospatial Foundation - all rights reserved
  * (c) 2001 - 2013 OpenPlans
  * This code is licensed under the GPL 2.0 license, available at the root
  * application directory.
@@ -12,11 +12,9 @@ import static org.junit.Assert.assertTrue;
 import static org.junit.Assert.fail;
 
 import org.geoserver.data.test.SystemTestData;
-import org.geoserver.platform.GeoServerExtensions;
 import org.geoserver.wfs.WFSTestSupport;
 import org.junit.Test;
-
-import com.mockrunner.mock.web.MockHttpServletResponse;
+import org.springframework.mock.web.MockHttpServletResponse;
 
 /**
  * Test the DXFOutputFormat WFS extension.
@@ -59,7 +57,6 @@ public class DXFOutputFormatTest extends WFSTestSupport {
     
     /**
      * Test a request with two queries.
-     * @throws Exception
      */
     @Test
     public void testMultiLayer() throws Exception {
@@ -70,7 +67,6 @@ public class DXFOutputFormatTest extends WFSTestSupport {
 
     /**
      * Test DXF-ZIP format.
-     * @throws Exception
      */
     @Test
     public void testZipOutput() throws Exception {
@@ -81,7 +77,6 @@ public class DXFOutputFormatTest extends WFSTestSupport {
 
     /**
      * Test a Point geometry.
-     * @throws Exception
      */
     @Test
     public void testPoints() throws Exception {
@@ -94,7 +89,6 @@ public class DXFOutputFormatTest extends WFSTestSupport {
     }
     /**
      * Test a MultiPoint geometry.
-     * @throws Exception
      */
     @Test
     public void testMultiPoints() throws Exception {
@@ -108,7 +102,6 @@ public class DXFOutputFormatTest extends WFSTestSupport {
 
     /**
      * Test a LineString geometry.
-     * @throws Exception
      */
     @Test
     public void testLines() throws Exception {
@@ -121,7 +114,6 @@ public class DXFOutputFormatTest extends WFSTestSupport {
 
     /**
      * Test a MultiLineString geometry.
-     * @throws Exception
      */
     @Test
     public void testMultiLines() throws Exception {
@@ -135,7 +127,6 @@ public class DXFOutputFormatTest extends WFSTestSupport {
 
     /**
      * Test a Polygon geometry.
-     * @throws Exception
      */
     @Test
     public void testPolygons() throws Exception {
@@ -149,7 +140,6 @@ public class DXFOutputFormatTest extends WFSTestSupport {
     
     /**
      * Test writeattributes option.
-     * @throws Exception
      */
     @Test
     public void testWriteAttributes() throws Exception {
@@ -163,7 +153,6 @@ public class DXFOutputFormatTest extends WFSTestSupport {
 
     /**
      * Test a MultiPolygon geometry.
-     * @throws Exception
      */
     @Test
     public void testMultiPolygons() throws Exception {
@@ -176,22 +165,46 @@ public class DXFOutputFormatTest extends WFSTestSupport {
     }
 
     /**
+     * Bounding Box excludes all features. Envelope is empty Envelop.expandBy(1) is still empty.
+     * Division by zero. The result is an invalid character in DXF, entire file is invalid.
+     */
+    @Test
+    public void testEmptyBbox() throws Exception {
+        MockHttpServletResponse resp = getAsServletResponse("wfs?request=GetFeature&version=1.1.0&typeName=MPolygons&outputFormat=dxf&bbox=929636,6013554.5,930744,6014601.5&srsName=EPSG:900913");
+        String sResponse = testBasicResult(resp, "MPolygons");
+        System.out.println(sResponse);
+        for (int i = 0; i < sResponse.length(); i++) {
+            char c = sResponse.charAt(i);
+            assertTrue("Invalid non-ASCII char: '"+c+"'", c < 128);
+        }
+    }
+
+    /**
+     * Test maxFeatures=0: No collection passed to writer, no geom. Result was: NPE
+     * Maybe exotic, but should not end in NPE.
+     */
+    @Test
+    public void testEmptyCount() throws Exception {
+        MockHttpServletResponse resp = getAsServletResponse("wfs?request=GetFeature&version=1.1.0&typeName=MPolygons&outputFormat=dxf&maxFeatures=0");
+        testBasicResult(resp, "MPolygons");
+    }
+    
+    /**
      * Test format option asblocks.
      * 
-     * @throws Exception
      */
     @Test
     public void testGeometryAsBlock() {
         try {
             // geometry as blocks false
             MockHttpServletResponse resp = getAsServletResponse("wfs?request=GetFeature&version=1.1.0&typeName=Polygons&outputFormat=dxf");
-            String sResponse = resp.getOutputStreamContent();
+            String sResponse = resp.getContentAsString();
             assertNotNull(sResponse);
             // no insert block generated
             assertFalse(sResponse.indexOf("INSERT") != -1);
             // geometry as blocks true
             resp = getAsServletResponse("wfs?request=GetFeature&version=1.1.0&typeName=Polygons&outputFormat=dxf&format_options=asblocks:true");
-            sResponse = resp.getOutputStreamContent();
+            sResponse = resp.getContentAsString();
             assertNotNull(sResponse);
             // one insert block generated
             assertTrue(sResponse.indexOf("INSERT") != -1);
@@ -203,19 +216,18 @@ public class DXFOutputFormatTest extends WFSTestSupport {
     /**
      * Test format option version support.
      * 
-     * @throws Exception
      */
     @Test
     public void testVersion() throws Exception {
         try {
             // good request, version 14
             MockHttpServletResponse resp = getAsServletResponse("wfs?request=GetFeature&version=1.1.0&typeName=Polygons&outputFormat=dxf&format_options=version:14");
-            String sResponse = resp.getOutputStreamContent();
+            String sResponse = resp.getContentAsString();
             assertNotNull(sResponse);
             assertTrue(sResponse.startsWith("  0"));
             // bad request, version 13: not supported
             resp = getAsServletResponse("wfs?request=GetFeature&version=1.1.0&typeName=Polygons&outputFormat=dxf&format_options=version:13");
-            sResponse = resp.getOutputStreamContent();
+            sResponse = resp.getContentAsString();
             assertNotNull(sResponse);
             // has to return an exception
             assertTrue(sResponse.indexOf("</ows:ExceptionReport>") != -1);
@@ -230,8 +242,7 @@ public class DXFOutputFormatTest extends WFSTestSupport {
      * not empty output generation. 
      * @param resp
      * @param featureName
-     * @return
-     * @throws Exception
+     *
      */
     public String testBasicResult(MockHttpServletResponse resp, String featureName)
             throws Exception {
@@ -241,7 +252,7 @@ public class DXFOutputFormatTest extends WFSTestSupport {
         assertEquals("attachment; filename=" + featureName + ".dxf", resp
                 .getHeader("Content-Disposition"));
         // check for content (without checking in detail)
-        String sResponse = resp.getOutputStreamContent();        
+        String sResponse = resp.getContentAsString();        
         assertNotNull(sResponse);
         return sResponse;
 
@@ -249,7 +260,6 @@ public class DXFOutputFormatTest extends WFSTestSupport {
 
     /**
      * Test the ltypes format option.
-     * @throws Exception
      */
     @Test
     public void testCustomLineTypes() throws Exception {
@@ -259,7 +269,6 @@ public class DXFOutputFormatTest extends WFSTestSupport {
     }
     /**
      * Test the colors format option.
-     * @throws Exception
      */
     @Test
     public void testCustomColors() throws Exception {
@@ -270,7 +279,6 @@ public class DXFOutputFormatTest extends WFSTestSupport {
     
     /**
      * Test custom naming for layers.
-     * @throws Exception
      */
     @Test
     public void testLayerNames() throws Exception {
@@ -281,7 +289,6 @@ public class DXFOutputFormatTest extends WFSTestSupport {
     
     /**
      * Test fix for GEOS-6402.
-     * @throws Exception
      */
     @Test
     public void testLayerNamesParsing() throws Exception {
@@ -300,7 +307,7 @@ public class DXFOutputFormatTest extends WFSTestSupport {
     /**
      * Get a search starting point.
      * @param response
-     * @return
+     *
      */
     private int getGeometrySearchStart(String response) {
         return response.indexOf("BLOCKS");

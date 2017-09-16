@@ -48,14 +48,14 @@ This structure allows to have:
 
 This full blown deployment is composed by:
 
-* A pure Master GeoServer(s), this instance can only send events to the topic.It cannot act as a slave
-* A set of Geoserver which can work as both Master and Slave. These instances can send and receive messages to/from the topic. They can work as Masters (sending message to other subscribers) as well as Slaves (these instances are also subscribers of the topic).
+* A pure Master GeoServer(s), this instance can only send events to the topic. It cannot act as a slave
+* A set of GeoServer which can work as both Master and Slave. These instances can send and receive messages to/from the topic. They can work as Masters (sending message to other subscribers) as well as Slaves (these instances are also subscribers of the topic).
 * A set of pure Slaves GeoServer instances whic can only receive messages from the topic.
 * A set of MOM brokers so that each GeoServer instance is configured with a set of available brokers (failover). Each broker use the shared database as persistence. Doing so if a broker fails for some reason, messages can still be written and read from the shared database.
 
 All the produced code is based on spring-jms to ensure portability amongst different MOM, but if you look at the schema, we are also leveraging ActiveMQ VirtualTopics to get dinamic routing (you can dinamically attach masters and slaves).
 
-The VirtualTopics feature has also other advantages explained here http://activemq.apache.org/virtual-destinations.html
+The VirtualTopics feature has also other advantages explained here: http://activemq.apache.org/virtual-destinations.html
 
 As said above, in the default configuration the MOM runs inside GeoServer itself, simplifying the topology and
 the setup effort.
@@ -89,7 +89,7 @@ The instance.name is used to distinguish from which GeoServer instance the messa
 
 Broker URL
 ----------
-The broker.url field is used to instruct the internal JMS machinery where to publish messages to (master GeoServer installation) or where to consume messages from (slave GeoServer installation). Many options are available for configuring the connection between the GeoServer instance and the JMS broker, for a complete list, please, check this link. In case when (recommended) failover set up  is put in place multiple broker URLs can be used: please, check this link for more information about how to configure that.
+The broker.url field is used to instruct the internal JMS machinery where to publish messages to (master GeoServer installation) or where to consume messages from (slave GeoServer installation). Many options are available for configuring the connection between the GeoServer instance and the JMS broker, for a complete list, please, check http://activemq.apache.org/configuring-transports.html. In case when (recommended) failover set up  is put in place multiple broker URLs can be used. See http://activemq.apache.org/failover-transport-reference.html for more information about how to configure that.
 Note
 GeoServer will not complete the start-up phase until the target broker is correctly activated and reachable.
 
@@ -130,7 +130,7 @@ Snyder Bosanac Davies - ActiveMQ in action - Manning
 http://docs.geoserver.org/
 
 [GeoServer REST]
-http://docs.geoserver.org/latest/en/user/restconfig/rest-config-api.html
+http://docs.geoserver.org/latest/en/user/rest/index.html#rest
 
 [ActiveMQ]
 http://activemq.apache.org/

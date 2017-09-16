@@ -1,4 +1,4 @@
-/* (c) 2014 Open Source Geospatial Foundation - all rights reserved
+/* (c) 2014 - 2015 Open Source Geospatial Foundation - all rights reserved
  * (c) 2001 - 2013 OpenPlans
  * This code is licensed under the GPL 2.0 license, available at the root
  * application directory.
@@ -48,6 +48,7 @@ public abstract class WMSCascadeTestSupport extends WMSTestSupport {
     @Override
     protected void setUpTestData(SystemTestData testData) throws Exception {
         // we only setup the cascaded WMS layer, so no call to super
+        testData.setUpSecurity();
     }
     
     @Override
@@ -79,9 +80,9 @@ public abstract class WMSCascadeTestSupport extends WMSTestSupport {
         cb.setStore(store);
         store.setCapabilitiesURL(caps);
         WMSLayerInfo wmsLayer = cb.buildWMSLayer("world4326");
+        wmsLayer.setName(WORLD4326_130);
         getCatalog().add(wmsLayer);
         LayerInfo gsLayer = cb.buildLayer(wmsLayer);
-        gsLayer.setName(WORLD4326_130);
         getCatalog().add(gsLayer);
     }
     
@@ -106,9 +107,9 @@ public abstract class WMSCascadeTestSupport extends WMSTestSupport {
         cb.setStore(store);
         store.setCapabilitiesURL(caps);
         WMSLayerInfo wmsLayer = cb.buildWMSLayer("world4326");
+        wmsLayer.setName(WORLD4326_110);
         getCatalog().add(wmsLayer);
         LayerInfo gsLayer = cb.buildLayer(wmsLayer);
-        gsLayer.setName(WORLD4326_110);
         getCatalog().add(gsLayer);
     }
     
@@ -129,14 +130,10 @@ public abstract class WMSCascadeTestSupport extends WMSTestSupport {
         cb.setStore(store);
         store.setCapabilitiesURL(caps);
         WMSLayerInfo wmsLayer = cb.buildWMSLayer("world4326");
+        wmsLayer.setName(WORLD4326_110_NFI);
         getCatalog().add(wmsLayer);
         LayerInfo gsLayer = cb.buildLayer(wmsLayer);
-        gsLayer.setName(WORLD4326_110_NFI);
         getCatalog().add(gsLayer);
     }
-    
-    
-    
-   
     
 }

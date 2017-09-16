@@ -19,6 +19,8 @@ package org.geoserver.jdbcconfig.internal;
 import java.lang.reflect.Proxy;
 import java.sql.Connection;
 import java.sql.Statement;
+import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Collection;
 
 import org.easymock.Capture;
@@ -161,6 +163,20 @@ public class ConfigDatabaseTest {
     }
 
     @Test
+    public void testRemoveWorkspace() {
+        WorkspaceInfo ws = new WorkspaceInfoImpl();
+        ((WorkspaceInfoImpl) ws).setId("removeid");
+        ws.setName("remove");
+        ws = database.add(ws);
+        assertNotNull(database.getById(ws.getId(), WorkspaceInfo.class));
+        // org.geoserver.catalog.NamespaceWorkspaceConsistencyListener.handleRemoveEvent(CatalogRemoveEvent)
+        // can cause remove to actually be called twice on the workspace.
+        database.remove(ws);
+        database.remove(ws);
+        assertNull(database.getById(ws.getId(), WorkspaceInfo.class));
+    }
+
+    @Test
     public void testModifyService(){
         
         // Create a service to modify
@@ -203,7 +219,7 @@ public class ConfigDatabaseTest {
         assertEquals("name1", ws2.getName());
         
         // Notify of update
-        testSupport.getCatalog().firePostModified(ws2);
+        testSupport.getCatalog().firePostModified(ws2, Arrays.asList("name"), Arrays.asList("name1"), Arrays.asList("name2"));
         
         // Should show the new value
         WorkspaceInfo ws3 = database.getById(ws.getId(), WorkspaceInfo.class);
@@ -249,6 +265,7 @@ public class ConfigDatabaseTest {
         assertEquals("Bar", service.getMaintainer());
     }
 
+    @Test
     public void testGetServiceWithGeoServerRef() {
         WMSInfo service = new WMSInfoImpl();
         ((WMSInfoImpl) service).setId("WMS-TEST");

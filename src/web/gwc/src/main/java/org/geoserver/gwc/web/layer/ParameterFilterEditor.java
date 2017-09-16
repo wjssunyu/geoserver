@@ -1,4 +1,4 @@
-/* (c) 2014 Open Source Geospatial Foundation - all rights reserved
+/* (c) 2014 - 2016 Open Source Geospatial Foundation - all rights reserved
  * (c) 2001 - 2013 OpenPlans
  * This code is licensed under the GPL 2.0 license, available at the root
  * application directory.
@@ -11,6 +11,7 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.HashSet;
+import java.util.Iterator;
 import java.util.List;
 import java.util.MissingResourceException;
 import java.util.Set;
@@ -18,17 +19,17 @@ import java.util.TreeSet;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 
-import org.apache.wicket.AttributeModifier;
 import org.apache.wicket.Component;
 import org.apache.wicket.ajax.AjaxRequestTarget;
-import org.apache.wicket.behavior.SimpleAttributeModifier;
+import org.apache.wicket.ajax.markup.html.form.AjaxSubmitLink;
+import org.apache.wicket.AttributeModifier;
 import org.apache.wicket.markup.html.WebMarkupContainer;
 import org.apache.wicket.markup.html.basic.Label;
 import org.apache.wicket.markup.html.form.DropDownChoice;
 import org.apache.wicket.markup.html.form.Form;
 import org.apache.wicket.markup.html.form.FormComponent;
 import org.apache.wicket.markup.html.form.FormComponentPanel;
-import org.apache.wicket.markup.html.form.IChoiceRenderer;
+import org.apache.wicket.markup.html.form.ChoiceRenderer;
 import org.apache.wicket.markup.html.form.TextField;
 import org.apache.wicket.markup.html.list.ListItem;
 import org.apache.wicket.markup.html.list.ListView;
@@ -47,10 +48,10 @@ import org.geoserver.gwc.layer.StyleParameterFilter;
 import org.geoserver.gwc.web.GWCIconFactory;
 import org.geoserver.web.wicket.GeoServerAjaxFormLink;
 import org.geoserver.web.wicket.Icon;
-import org.geoserver.web.wicket.ImageAjaxLink;
 import org.geoserver.web.wicket.ParamResourceModel;
 import org.geotools.util.logging.Logging;
 import org.geowebcache.filter.parameters.FloatParameterFilter;
+import org.geowebcache.filter.parameters.IntegerParameterFilter;
 import org.geowebcache.filter.parameters.ParameterFilter;
 import org.geowebcache.filter.parameters.RegexParameterFilter;
 import org.geowebcache.filter.parameters.StringParameterFilter;
@@ -169,6 +170,16 @@ class ParameterFilterEditor extends FormComponentPanel<Set<ParameterFilter>> {
 
             @Override
             protected void onBeforeRender() {
+            	//let's remove the correct child quickly before wicket just removes the last one on the list.
+            	for (final Iterator<Component> iterator = iterator(); iterator.hasNext();){
+					final ListItem<?> child = (ListItem<?>) iterator.next();
+					if (child != null) {
+						if (!getList().contains(child.get("subform").getDefaultModelObject())) {
+							iterator.remove();
+						}
+					}
+				}
+            	
                 super.onBeforeRender();
             }
 
@@ -176,37 +187,30 @@ class ParameterFilterEditor extends FormComponentPanel<Set<ParameterFilter>> {
             protected void populateItem(final ListItem<ParameterFilter> item) {
                 // odd/even style
                 final int index = item.getIndex();
-                item.add(new SimpleAttributeModifier("class", index % 2 == 0 ? "even" : "odd"));
+                item.add(AttributeModifier.replace("class", index % 2 == 0 ? "even" : "odd"));
 
                 //Create form
                 final Label keyLabel;
                 keyLabel = new Label("key", new PropertyModel<String>(item.getModel(),"key"));
                 item.add(keyLabel);
                 
-                final Component subForm = getSubform("subform", item.getModel());
-                //final Component subForm = new Label("subform", "Blah");
+                final Component subForm = getSubform("subform", new Model<ParameterFilter> (item.getModelObject()));
                 item.add(subForm);
                 
-                final Component removeLink;
+                final AjaxSubmitLink removeLink;
 
-                removeLink = new ImageAjaxLink("removeLink", GWCIconFactory.DELETE_ICON) {
+                removeLink = new AjaxSubmitLink("removeLink") {
                     private static final long serialVersionUID = 1L;
 
                     @Override
-                    protected void onClick(AjaxRequestTarget target) {
-                        List<ParameterFilter> list;
-                        list = new ArrayList<ParameterFilter>(filters.getModelObject());
-                        final ParameterFilter filter = (ParameterFilter) getDefaultModelObject();
-
-                        list.remove(filter);
-                        filters.setModelObject(list);
-                        item.remove();
-
-                        target.addComponent(container);
+                    protected void onSubmit(AjaxRequestTarget target, Form<?> form) {
+                    	getList().remove((ParameterFilter) getDefaultModelObject());
+                        target.add(container);
                     }
                 };
+                removeLink.add(new Icon("removeIcon", GWCIconFactory.DELETE_ICON));
                 removeLink.setDefaultModel(item.getModel());
-                removeLink.add(new AttributeModifier("title", true, new ResourceModel(
+                removeLink.add(new AttributeModifier("title", new ResourceModel(
                         "ParameterFilterEditor.removeLink")));
                 item.add(removeLink);
             }
@@ -215,7 +219,11 @@ class ParameterFilterEditor extends FormComponentPanel<Set<ParameterFilter>> {
         filters.setOutputMarkupId(true);
         // this is necessary to avoid loosing item contents on edit/validation checks
         filters.setReuseItems(true);
-        table.add(filters);
+        
+		Form<?> filtersForm = new Form<>("filtersForm", filters.getDefaultModel());
+        filtersForm.add(filters);
+                
+        table.add(filtersForm);
 
         List<String> parameterKeys = new ArrayList<String>(GWC.get().getGridSetBroker().getNames());
         for (ParameterFilter filter : model.getObject()) {
@@ -227,13 +235,13 @@ class ParameterFilterEditor extends FormComponentPanel<Set<ParameterFilter>> {
             private static final long serialVersionUID = 1L;
 
             @Override
-            protected void onClick(AjaxRequestTarget target, Form form) {
+            protected void onClick(AjaxRequestTarget target, Form<?> form) {
                 StyleParameterFilter newFilter = new StyleParameterFilter();
                 newFilter.setLayer((LayerInfo)layerModel.getObject());
                 
                 addFilter(newFilter);
 
-                target.addComponent(container);
+                target.add(container);
             }
         };
         addStyleFilterLink.add(new Icon("addIcon", GWCIconFactory.ADD_ICON));
@@ -244,6 +252,7 @@ class ParameterFilterEditor extends FormComponentPanel<Set<ParameterFilter>> {
                 new ArrayList<Class<? extends ParameterFilter>>();
         filterTypes.add(StringParameterFilter.class);
         filterTypes.add(FloatParameterFilter.class);
+        filterTypes.add(IntegerParameterFilter.class);
         filterTypes.add(RegexParameterFilter.class);
         
         
@@ -251,7 +260,7 @@ class ParameterFilterEditor extends FormComponentPanel<Set<ParameterFilter>> {
             (       "availableFilterTypes", 
                     new Model<Class<? extends ParameterFilter>>(),
                     new Model<ArrayList<Class<? extends ParameterFilter>>>(filterTypes), 
-                    new IChoiceRenderer<Class<? extends ParameterFilter>>() {
+                    new ChoiceRenderer<Class<? extends ParameterFilter>>() {
 
                         /** serialVersionUID */
                         private static final long serialVersionUID = 1L;
@@ -300,7 +309,7 @@ class ParameterFilterEditor extends FormComponentPanel<Set<ParameterFilter>> {
             private static final long serialVersionUID = 1L;
 
             @Override
-            protected void onClick(AjaxRequestTarget target, Form form) {
+            protected void onClick(AjaxRequestTarget target, Form<?> form) {
                 availableFilterTypes.processInput();
                 newFilterKey.processInput();
                 String key = newFilterKey.getModelObject();
@@ -317,17 +326,11 @@ class ParameterFilterEditor extends FormComponentPanel<Set<ParameterFilter>> {
                         newFilterKey.setModel(Model.of("")); // Reset the key field
                     } catch (NoSuchMethodException ex) {
                         LOGGER.log(Level.WARNING, "No Default Constructor for "+type ,ex);
-                    } catch (InvocationTargetException ex) {
-                        LOGGER.log(Level.WARNING, "Could not execute default Constructor for "+type ,ex);
-                    } catch (SecurityException ex) {
-                        LOGGER.log(Level.WARNING, "Could not execute default Constructor for "+type ,ex);
-                    } catch (InstantiationException ex) {
-                        LOGGER.log(Level.WARNING, "Could not execute default Constructor for "+type ,ex);
-                    } catch (IllegalAccessException ex) {
+                    } catch (InvocationTargetException | SecurityException  | InstantiationException | IllegalAccessException ex) {
                         LOGGER.log(Level.WARNING, "Could not execute default Constructor for "+type ,ex);
                     }
                 }
-                target.addComponent(container);
+                target.add(container);
             }
         };
         addFilterLink.add(new Icon("addIcon", GWCIconFactory.ADD_ICON));
@@ -337,7 +340,7 @@ class ParameterFilterEditor extends FormComponentPanel<Set<ParameterFilter>> {
     /**
      * Returns an appropriate subform for the given ParameterFilter model
      * @param model
-     * @return
+     *
      */
     @SuppressWarnings("unchecked")
     private Component getSubform(String id, IModel<? extends ParameterFilter> model){
@@ -354,20 +357,18 @@ class ParameterFilterEditor extends FormComponentPanel<Set<ParameterFilter>> {
         if (model.getObject() instanceof FloatParameterFilter) {
             return new FloatParameterFilterSubform(id, (IModel<FloatParameterFilter>) model);
         }
+        if (model.getObject() instanceof IntegerParameterFilter) {
+            return new IntegerParameterFilterSubform(id, (IModel<IntegerParameterFilter>) model);
+        }
         return new DefaultParameterFilterSubform(id, (IModel<ParameterFilter>) model);
     }
     
     @Override
-    protected void convertInput() {
-        filters.visitChildren(new Component.IVisitor<Component>() {
-
-            @Override
-            public Object component(Component component) {
-                if (component instanceof FormComponent) {
-                    FormComponent<?> formComponent = (FormComponent<?>) component;
-                    formComponent.processInput();
-                }
-                return Component.IVisitor.CONTINUE_TRAVERSAL;
+    public void convertInput() {
+        filters.visitChildren((component, visit) -> {
+            if (component instanceof FormComponent) {
+                FormComponent<?> formComponent = (FormComponent<?>) component;
+                formComponent.processInput();
             }
         });
         List<ParameterFilter> info = filters.getModelObject();

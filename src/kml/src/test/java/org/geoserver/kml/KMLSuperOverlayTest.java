@@ -107,7 +107,6 @@ public class KMLSuperOverlayTest extends WMSTestSupport {
     /**
      * Checks what happens when the data bbox is at the crossing of a parent tile
      * that is two levels above the bbox itself
-     * @throws Exception
      */
     @Test
     public void testCrossingSuperoverlay() throws Exception {
@@ -124,8 +123,10 @@ public class KMLSuperOverlayTest extends WMSTestSupport {
         assertXpathEvaluatesTo("-105.22419118401743", "//kml:Document/kml:LookAt/kml:longitude", document);
         assertXpathEvaluatesTo("40.008056082289826", "//kml:Document/kml:LookAt/kml:latitude", document);
 
-        assertXpathEvaluatesTo("-105.22433780246726", "//kml:Document/kml:Folder/kml:LookAt/kml:longitude", document);
-        assertXpathEvaluatesTo("40.008106270709035", "//kml:Document/kml:Folder/kml:LookAt/kml:latitude", document);
+        assertEquals(-105.2243,
+            Double.parseDouble(xpath.evaluate("//kml:Document/kml:Folder/kml:LookAt/kml:longitude", document)), 1E-4);
+        assertEquals(40.0081,
+            Double.parseDouble(xpath.evaluate("//kml:Document/kml:Folder/kml:LookAt/kml:latitude", document)), 1E-4);
     }
     
     /**

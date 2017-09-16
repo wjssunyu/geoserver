@@ -1,4 +1,4 @@
-/* (c) 2014 Open Source Geospatial Foundation - all rights reserved
+/* (c) 2014 - 2016 Open Source Geospatial Foundation - all rights reserved
  * (c) 2001 - 2013 OpenPlans
  * This code is licensed under the GPL 2.0 license, available at the root
  * application directory.
@@ -37,7 +37,7 @@ import org.opengis.feature.simple.SimpleFeatureType;
 import org.opengis.feature.type.FeatureType;
 import org.opengis.filter.FilterFactory;
 
-import com.mockrunner.mock.web.MockHttpServletResponse;
+import org.springframework.mock.web.MockHttpServletResponse;
 
 /**
  * 
@@ -71,7 +71,7 @@ public class GeoPackageGetFeatureOutputFormatTest extends WFSTestSupport {
         FeatureSource<? extends FeatureType, ? extends Feature> fs = getFeatureSource(SystemTestData.BASIC_POLYGONS);;
         fct.getFeature().add(fs.getFeatures());
         
-        testGetFeature(fct);
+        testGetFeature(fct, false);
     }
     
     @Test
@@ -79,13 +79,13 @@ public class GeoPackageGetFeatureOutputFormatTest extends WFSTestSupport {
         FeatureCollectionResponse fct = 
             FeatureCollectionResponse.adapt(WfsFactory.eINSTANCE.createFeatureCollectionType());
         
-        FeatureSource<? extends FeatureType, ? extends Feature> fs = getFeatureSource(SystemTestData.SEVEN);;
+        FeatureSource<? extends FeatureType, ? extends Feature> fs = getFeatureSource(SystemTestData.LAKES);
         fct.getFeature().add(fs.getFeatures());
         
-        fs = getFeatureSource(SystemTestData.FIFTEEN);;
+        fs = getFeatureSource(SystemTestData.STREAMS);
         fct.getFeature().add(fs.getFeatures());
                 
-        testGetFeature(fct);
+        testGetFeature(fct, false);
     }
     
     @Test
@@ -93,7 +93,7 @@ public class GeoPackageGetFeatureOutputFormatTest extends WFSTestSupport {
         FeatureCollectionResponse fct = 
             FeatureCollectionResponse.adapt(WfsFactory.eINSTANCE.createFeatureCollectionType());
         
-        FeatureSource<? extends FeatureType, ? extends Feature> fs = getFeatureSource(SystemTestData.SEVEN);;
+        FeatureSource<? extends FeatureType, ? extends Feature> fs = getFeatureSource(SystemTestData.LAKES);
         fct.getFeature().add(fs.getFeatures());
         
         fs = getFeatureSource(SystemTestData.STREAMS);
@@ -101,7 +101,21 @@ public class GeoPackageGetFeatureOutputFormatTest extends WFSTestSupport {
         assertEquals(1, coll.size());
         
         fct.getFeature().add(coll);                
-        testGetFeature(fct);
+        testGetFeature(fct, false);
+    }
+    
+    @Test
+    public void testGetFeatureWithSpatialIndex () throws IOException {
+        System.setProperty(GeoPackageGetFeatureOutputFormat.PROPERTY_INDEXED, "true");
+        FeatureCollectionResponse fct = FeatureCollectionResponse.adapt(WfsFactory.eINSTANCE
+                .createFeatureCollectionType());
+
+        FeatureSource<? extends FeatureType, ? extends Feature> fs = getFeatureSource(SystemTestData.BASIC_POLYGONS);
+        fct.getFeature().add(fs.getFeatures());
+
+        testGetFeature(fct, true);
+        
+        System.getProperties().remove(GeoPackageGetFeatureOutputFormat.PROPERTY_INDEXED);
     }
 
     @Test
@@ -115,7 +129,7 @@ public class GeoPackageGetFeatureOutputFormatTest extends WFSTestSupport {
         assertEquals("attachment; filename="+layerName+".gpkg", resp.getHeader("Content-Disposition"));
     }
 
-    public void testGetFeature (FeatureCollectionResponse fct) throws IOException {
+    public void testGetFeature (FeatureCollectionResponse fct, boolean indexed) throws IOException {
         //FileOutputStream fos = new FileOutputStream(new File("/home/niels/Temp/geopkg.db"));
         //format.write(fct, fos, op);
         
@@ -128,10 +142,14 @@ public class GeoPackageGetFeatureOutputFormatTest extends WFSTestSupport {
         for (FeatureCollection collection: fct.getFeatures()) {
             FeatureEntry e = new FeatureEntry();
             e.setTableName(collection.getSchema().getName().getLocalPart());
+            e.setGeometryColumn(collection.getSchema().getGeometryDescriptor().getName().getLocalPart());
             
             SimpleFeatureReader reader = geopkg.reader(e, null, null);
             
             SimpleFeatureCollection sCollection = (SimpleFeatureCollection) collection;
+            
+            //spatial index
+            assertEquals(indexed, geopkg.hasSpatialIndex(e));
             
             //compare type
             SimpleFeatureType type1 = reader.getFeatureType();

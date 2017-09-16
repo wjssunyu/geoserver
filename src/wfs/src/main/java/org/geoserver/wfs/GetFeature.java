@@ -1,11 +1,11 @@
-/* (c) 2014 Open Source Geospatial Foundation - all rights reserved
+/* (c) 2014 - 2016 Open Source Geospatial Foundation - all rights reserved
  * (c) 2001 - 2013 OpenPlans
  * This code is licensed under the GPL 2.0 license, available at the root
  * application directory.
  */
 package org.geoserver.wfs;
 
-import static org.geoserver.ows.util.ResponseUtils.*;
+import static org.geoserver.ows.util.ResponseUtils.buildURL;
 
 import java.io.IOException;
 import java.math.BigInteger;
@@ -22,6 +22,8 @@ import javax.xml.namespace.QName;
 import net.opengis.wfs.XlinkPropertyNameType;
 import net.opengis.wfs20.ResultTypeType;
 import net.opengis.wfs20.StoredQueryType;
+import net.sf.cglib.proxy.Enhancer;
+import net.sf.cglib.proxy.LazyLoader;
 
 import org.geoserver.catalog.AttributeTypeInfo;
 import org.geoserver.catalog.Catalog;
@@ -69,6 +71,8 @@ import org.opengis.filter.Filter;
 import org.opengis.filter.FilterFactory2;
 import org.opengis.filter.Id;
 import org.opengis.filter.IncludeFilter;
+import org.opengis.filter.Not;
+import org.opengis.filter.Or;
 import org.opengis.filter.PropertyIsBetween;
 import org.opengis.filter.PropertyIsLike;
 import org.opengis.filter.PropertyIsNull;
@@ -158,8 +162,10 @@ public class GetFeature {
         joinFilterCapabilities.addType(TContains.class);
         joinFilterCapabilities.addType(TEquals.class);
 
-        //we only support simple filters, and any of them And'ed together.
+        // all logical combinations are supported too
         joinFilterCapabilities.addType(And.class);
+        joinFilterCapabilities.addType(Or.class);
+        joinFilterCapabilities.addType(Not.class);
     }
 
     /** The catalog */
@@ -292,7 +298,7 @@ public class GetFeature {
 
         boolean isNumberMatchedSkipped = false;
         int count = 0; // should probably be long
-        int totalCount = 0;
+        BigInteger totalCount = BigInteger.ZERO;
 
         //offset into result set in which to return features
         int totalOffset = request.getStartIndex() != null ? request.getStartIndex().intValue() : -1;
@@ -305,9 +311,15 @@ public class GetFeature {
             totalOffset = 0;
         }
         int offset = totalOffset;
+        
+        // feature collection size, we may need to calculate it
+        // optimization: WFS 1.0 does not require count unless we have multiple query elements
+        // and we are asked to perform a global limit on the results returned
+        boolean calculateSize = !(("1.0".equals(request.getVersion()) || "1.0.0".equals(request.getVersion())) && 
+            (queries.size() == 1 || maxFeatures == Integer.MAX_VALUE));
 
         List results = new ArrayList();
-        List<CountExecutor> totalCountExecutors = new ArrayList<CountExecutor>();
+        final List<CountExecutor> totalCountExecutors = new ArrayList<CountExecutor>();
         try {
             for (int i = 0; (i < queries.size()) && (count < maxFeatures); i++) {
 
@@ -326,13 +338,89 @@ public class GetFeature {
                     metas.add(featureTypeInfo(typeName, request));
                 }
 
-                //first is the primary feature type
-                FeatureTypeInfo meta = metas.get(0);
+                    // first is the primary feature type
+                    FeatureTypeInfo meta = metas.get(0);
 
-                // parse the requested property names and distribute among requested types
-                List<List<String>> reqPropertyNames = parsePropertyNames(query, metas);
+                    // parse the requested property names and distribute among requested types
+                    List<List<String>> reqPropertyNames = parsePropertyNames(query, metas);
 
-                NamespaceSupport ns = getNamespaceSupport();
+                    NamespaceSupport ns = getNamespaceSupport();
+                
+              //set up joins (if specified)
+                List<Join> joins = null;
+                String primaryAlias = null;
+                QName primaryTypeName = query.getTypeNames().get(0);
+                    FeatureTypeInfo primaryMeta = metas.get(0);
+                
+                //make sure filters are sane
+                //
+                // Validation of filters on non-simple feature types is not yet supported.
+                // FIXME: Support validation of filters on non-simple feature types:
+                // need to consider xpath properties and how to configure namespace prefixes in
+                // GeoTools app-schema FeaturePropertyAccessorFactory.
+                Filter filter = query.getFilter();
+                
+                if (filter == null && metas.size() > 1) {
+                    throw new WFSException(request, "Join query must specify a filter");
+                }
+
+                if (filter != null) {
+                    if (meta.getFeatureType() instanceof SimpleFeatureType) {                
+                        if (metas.size() > 1) {
+                            // sanitize aliases, they must not conflict with feature type names
+                            // nor with their attributes
+                            query = AliasedQuery.fixAliases(metas, query);
+                            // the filter might have been rewritten
+                            filter = query.getFilter();
+
+                            // the join extracting visitor cannot handle negated filters,
+                            // the simplifier handles most common case removing the negation,
+                            // e.g., not(a < 10) -> a >= 10
+                            filter = SimplifyingFilterVisitor.simplify(filter);
+
+                            // join, need to separate the joining filter from other filters
+                            JoinExtractingVisitor extractor = 
+                                    new JoinExtractingVisitor(metas, query.getAliases());
+                            filter.accept(extractor, null);
+
+                            primaryAlias = extractor.getPrimaryAlias();
+                            primaryMeta = extractor.getPrimaryFeatureType();
+                            metas = extractor.getFeatureTypes();
+                            primaryTypeName = new QName(primaryMeta.getNamespace().getURI(),
+                                    primaryMeta.getName());
+                            joins = extractor.getJoins();
+                            if (joins.size() != metas.size()-1) {
+                                throw new WFSException(request, String.format("Query specified %d types but %d " +
+                                        "join filters were found", metas.size(), extractor.getJoins().size()));
+                            }
+
+                            // validate the filter for each join, as well as the join filter
+                            for (int j = 1; j < metas.size(); j++) {
+                                Join join = joins.get(j-1);
+                                    if (!isValidJoinFilter(join.getJoinFilter())) {
+                                        throw new WFSException(request,
+                                                "Unable to perform join with specified join filter: "
+                                                        + filter);
+                                    }
+
+                                if (join.getFilter() != null) {
+                                    validateFilter(join.getFilter(), query, metas.get(j), request);
+                                }
+                            }
+
+                            filter = extractor.getPrimaryFilter();
+                            if (filter != null) {
+                                    validateFilter(filter, query, primaryMeta, request);
+                            }
+                        }
+                        else {
+                            validateFilter(filter, query, meta, request);
+                        }
+                    } else {
+                        BBOXNamespaceSettingVisitor filterVisitor = new BBOXNamespaceSettingVisitor(ns);
+                        filter.accept(filterVisitor, null);
+                    }
+                }
                 
                 List<List<PropertyName>> propNames = new ArrayList();
                 List<List<PropertyName>> allPropNames = new ArrayList();
@@ -391,69 +479,7 @@ public class GetFeature {
                     propNames.add(metaPropNames);
                 }
 
-                //set up joins (if specified)
-                List<Join> joins = null;
-                String primaryAlias = null;
-                QName primaryTypeName = query.getTypeNames().get(0);
-                    FeatureTypeInfo primaryMeta = metas.get(0);
-                
-                //make sure filters are sane
-                //
-                // Validation of filters on non-simple feature types is not yet supported.
-                // FIXME: Support validation of filters on non-simple feature types:
-                // need to consider xpath properties and how to configure namespace prefixes in
-                // GeoTools app-schema FeaturePropertyAccessorFactory.
-                Filter filter = query.getFilter();
-                
-                if (filter == null && metas.size() > 1) {
-                    throw new WFSException(request, "Join query must specify a filter");
-                }
 
-                if (filter != null) {
-                    if (meta.getFeatureType() instanceof SimpleFeatureType) {                
-                        if (metas.size() > 1) {
-                            //ensure that the filter is allowable
-                            if (!isValidJoinFilter(filter)) {
-                                throw new WFSException(request, 
-                                        "Unable to preform join with specified filter: " + filter);
-                            }
-                                // join, need to separate the joining filter from other filters
-                            JoinExtractingVisitor extractor = 
-                                    new JoinExtractingVisitor(metas, query.getAliases());
-                            filter.accept(extractor, null);
-
-                            primaryAlias = extractor.getPrimaryAlias();
-                            primaryMeta = extractor.getPrimaryFeatureType();
-                            primaryTypeName = new QName(primaryMeta.getNamespace().getURI(),
-                                    primaryMeta.getNativeName());
-                            joins = extractor.getJoins();
-                            if (joins.size() != metas.size()-1) {
-                                throw new WFSException(request, String.format("Query specified %d types but %d " +
-                                        "join filters were found", metas.size(), extractor.getJoins().size()));
-                            }
-
-                            //validate the filter for each join
-                            for (int j = 1; j < metas.size(); j++) {
-                                Join join = joins.get(j-1);
-                                if (join.getFilter() != null) {
-                                    validateFilter(join.getFilter(), query, metas.get(j), request);
-                                }
-                            }
-
-                            filter = extractor.getPrimaryFilter();
-                            if (filter != null) {
-                                validateFilter(filter, query, meta, request);
-                            }
-                        }
-                        else {
-                            validateFilter(filter, query, meta, request);
-                        }
-                    } else {
-                        BBOXNamespaceSettingVisitor filterVisitor = new BBOXNamespaceSettingVisitor(ns);
-                        filter.accept(filterVisitor, null);
-                    }
-                }
-                
                 // validate sortby if present
                 List<SortBy> sortBy = query.getSortBy();
                 if (sortBy != null && !sortBy.isEmpty()
@@ -494,14 +520,6 @@ public class GetFeature {
                     features.getSchema().getUserData().put("targetVersion", request.getVersion());
                 }
 
-                //feature collection size, we may need to calculate it
-                boolean calculateSize = true;
-
-                // optimization: WFS 1.0 does not require count unless we have multiple query elements
-                // and we are asked to perform a global limit on the results returned
-                calculateSize = !(("1.0".equals(request.getVersion()) || "1.0.0".equals(request.getVersion())) && 
-                    (queries.size() == 1 || maxFeatures == Integer.MAX_VALUE));
-                
                 if (!calculateSize) {
                     //if offset was specified and we have more queries left in this request then we 
                     // must calculate size in order to adjust the offset 
@@ -542,9 +560,12 @@ public class GetFeature {
                 // collect queries required to return numberMatched/totalSize
                 // check maxFeatures and offset, if they are unset we can use the size we 
                 // calculated above
-                isNumberMatchedSkipped = meta.getSkipNumberMatched();
+                isNumberMatchedSkipped = meta.getSkipNumberMatched()
+                        && !request.isResultTypeHits();
                 if (!isNumberMatchedSkipped) {
-                    if (calculateSize && queryMaxFeatures == Integer.MAX_VALUE && offset == 0) {
+                        if (calculateSize
+                                && (queryMaxFeatures == Integer.MAX_VALUE || size < queryMaxFeatures)
+                                && offset <= 0) {
                         totalCountExecutors.add(new CountExecutor(size));
                     } else {
                         org.geotools.data.Query qTotal = toDataQuery(query, filter, 0,
@@ -592,29 +613,25 @@ public class GetFeature {
                 }
             }
             
+            
             // total count represents the total count of the features matched for this query in cases
-            // where the client has limited the result set size, as an optimization we only calculate
-            // this if the following conditions hold
-            // 1. the request is wfs 2.0
-            // 2. maxFeatures != Integer.MAX_VALUE
-            //TODO: we could actually add a third a optimization that when the count of features is 
-            // less than maxFeatures we don't have to calculate it since it is the same as count, but 
-            // this requires that we do that check post query loop which requires a bit of code 
-            // refactoring
-
-            // we need the total count only for WFS 2.0
-            if (!request.getVersion().startsWith("2")) {
-                totalCount = -1;
+            // where the client has limited the result set size, so we compute it lazily
+            if (isNumberMatchedSkipped) {
+                totalCount = BigInteger.valueOf(-1);
+            } else if(count < maxFeatures && calculateSize) {
+                 // optimization: if count < max features then total count == count
+                 totalCount = BigInteger.valueOf(count);
             } else {
-                if (isNumberMatchedSkipped) {
-                    totalCount = -1;
-                    totalOffset = 0;
-                } else {
-                    // optimization: if count < max features then total count == count
-                    if(count < maxFeatures) {
-                        totalCount = count;
-                    } else {
-                        // ok, in this case we're forced to run the queries to discover the actual total count
+                // ok, in this case we're forced to run the queries to discover the actual total count
+                // We do so lazily, not all output formats need it, leveraging the fact that BigInteger
+                // is not final to wrap it in a lazy loading proxy
+                Enhancer enhancer = new Enhancer();
+                enhancer.setSuperclass(BigInteger.class);
+                enhancer.setCallback(new LazyLoader() {
+                    
+                    @Override
+                    public Object loadObject() throws Exception {
+                        long totalCount = 0;
                         for (CountExecutor q : totalCountExecutors) {
                             int result = q.getCount();
                             // if the count is unknown for one, we don't know the total, period
@@ -625,10 +642,11 @@ public class GetFeature {
                                 totalCount += result;
                             }
                         }
+                        return BigInteger.valueOf(totalCount);
                     }
-                }
+                });
+                totalCount = (BigInteger) enhancer.create(new Class[] {String.class}, new Object[] {"0"});
             }
-            
         } catch (IOException e) {
             throw new WFSException(request, "Error occurred getting features", e, request.getHandle());
         } catch (SchemaException e) {
@@ -669,6 +687,8 @@ public class GetFeature {
         return buildResults(request, totalOffset, maxFeatures, count, totalCount, results, lockId);
     }
 
+
+
     protected void processStoredQueries(GetFeatureRequest request) {
         List queries = request.getAdaptedQueries();
         for (int i = 0; i < queries.size(); i++) {
@@ -699,11 +719,11 @@ public class GetFeature {
      * Allows subclasses to alter the result generation
      */
     protected FeatureCollectionResponse buildResults(GetFeatureRequest request, int offset, int maxFeatures, 
-        int count, int total, List results, String lockId) {
+        int count, BigInteger total, List results, String lockId) {
 
         FeatureCollectionResponse result = request.createResponse();
         result.setNumberOfFeatures(BigInteger.valueOf(count));
-        result.setTotalNumberOfFeatures(BigInteger.valueOf(total));
+        result.setTotalNumberOfFeatures(total);
         result.setTimeStamp(Calendar.getInstance());
         result.setLockId(lockId);
         result.getFeature().addAll(results);
@@ -746,11 +766,10 @@ public class GetFeature {
             if (count > 0 && offset > -1) {
                 //next
 
-                //calculate the count of the next result set 
-                int nextCount = total - (offset + count);
-                if (nextCount > 0) {
+                // don't return a next if we are at the end.
+                // (ie. are returning less results than requested)
+                if (maxFeatures <= count) {
                     kvp.put("startIndex", String.valueOf(offset > 0 ? offset + count : count));
-                    //kvp.put("count", String.valueOf(nextCount));
                     kvp.put("count", String.valueOf(maxFeatures));
                     result.setNext(buildURL(request.getBaseUrl(), "wfs", kvp, URLType.SERVICE));
                 }
@@ -890,7 +909,7 @@ public class GetFeature {
      * Allows subclasses to poke with the feature collection extraction
      * @param source
      * @param gtQuery
-     * @return
+     *
      * @throws IOException
      */
     protected FeatureCollection<? extends FeatureType, ? extends Feature> getFeatures(
@@ -1124,14 +1143,12 @@ O:      for (String propName : query.getPropertyNames()) {
                 }
             }
 
-            if (query.getAliases().isEmpty()) {
-                //check for aliases
-                for (int j = 0; j < query.getAliases().size(); j++) {
-                    String alias = query.getAliases().get(j);
-                    if (propName.startsWith(alias+"/")) {
-                        propNames.get(j).add(propName.substring((alias+"/").length()));
-                        continue O;
-                    }
+            // check for aliases
+            for (int j = 0; j < query.getAliases().size(); j++) {
+                String alias = query.getAliases().get(j);
+                if (propName.startsWith(alias + "/")) {
+                    propNames.get(j).add(propName.substring((alias + "/").length()));
+                    continue O;
                 }
             }
 
@@ -1225,6 +1242,7 @@ O:      for (String propName : query.getPropertyNames()) {
                             CoordinateReferenceSystem crs = null;
                             try {
                                 crs = CRS.decode( filter.getSRS() );
+                                e.setCoordinateReferenceSystem(crs);
                                 e = CRS.transform(e, geo);
                             } 
                             catch( Exception ex ) {

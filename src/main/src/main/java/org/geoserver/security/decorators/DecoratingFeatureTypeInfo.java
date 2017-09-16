@@ -1,4 +1,4 @@
-/* (c) 2014 Open Source Geospatial Foundation - all rights reserved
+/* (c) 2014 - 2015 Open Source Geospatial Foundation - all rights reserved
  * (c) 2001 - 2013 OpenPlans
  * This code is licensed under the GPL 2.0 license, available at the root
  * application directory.
@@ -12,6 +12,7 @@ import java.util.Map;
 import org.geoserver.catalog.AttributeTypeInfo;
 import org.geoserver.catalog.Catalog;
 import org.geoserver.catalog.CatalogVisitor;
+import org.geoserver.catalog.DataLinkInfo;
 import org.geoserver.catalog.DataStoreInfo;
 import org.geoserver.catalog.FeatureTypeInfo;
 import org.geoserver.catalog.KeywordInfo;
@@ -96,8 +97,8 @@ public abstract class DecoratingFeatureTypeInfo extends AbstractDecorator<Featur
         return delegate.getFeatureType();
     }
 
-    public Filter getFilter() {
-        return delegate.getFilter();
+    public Filter filter() {
+        return delegate.filter();
     }
 
     public String getId() {
@@ -127,6 +128,10 @@ public abstract class DecoratingFeatureTypeInfo extends AbstractDecorator<Featur
 
     public List<MetadataLinkInfo> getMetadataLinks() {
         return delegate.getMetadataLinks();
+    }
+
+    public List<DataLinkInfo> getDataLinks() {
+        return delegate.getDataLinks();
     }
 
     public String getName() {
@@ -205,10 +210,6 @@ public abstract class DecoratingFeatureTypeInfo extends AbstractDecorator<Featur
 
     public void setEnabled(boolean enabled) {
         delegate.setEnabled(enabled);
-    }
-
-    public void setFilter(Filter filter) {
-        delegate.setFilter(filter);
     }
 
     public void setLatLonBoundingBox(ReferencedEnvelope box) {
@@ -317,4 +318,15 @@ public abstract class DecoratingFeatureTypeInfo extends AbstractDecorator<Featur
     public void setCircularArcPresent(boolean enabled) {
     	delegate.setCircularArcPresent(enabled);
     }
+    
+    @Override
+    public String getCqlFilter() {
+        return delegate.getCqlFilter();
+    }
+
+    @Override
+    public void setCqlFilter(String cqlFilter) {
+        delegate.setCqlFilter(cqlFilter);
+    }
+
 }

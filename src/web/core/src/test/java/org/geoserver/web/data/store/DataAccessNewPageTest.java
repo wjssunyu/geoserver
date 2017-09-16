@@ -1,21 +1,26 @@
-/* (c) 2014 Open Source Geospatial Foundation - all rights reserved
+/* (c) 2014 - 2016 Open Source Geospatial Foundation - all rights reserved
  * (c) 2001 - 2013 OpenPlans
  * This code is licensed under the GPL 2.0 license, available at the root
  * application directory.
  */
 package org.geoserver.web.data.store;
 
+import static org.hamcrest.CoreMatchers.instanceOf;
 import static org.junit.Assert.*;
 
 import java.util.Arrays;
 import java.util.List;
 
+import org.apache.wicket.Component;
 import org.geoserver.catalog.Catalog;
 import org.geoserver.catalog.NamespaceInfo;
 import org.geoserver.catalog.WorkspaceInfo;
 import org.geoserver.web.GeoServerWicketTestSupport;
+import org.geoserver.web.data.store.panel.FileParamPanel;
 import org.geoserver.web.data.store.panel.WorkspacePanel;
 import org.geotools.data.property.PropertyDataStoreFactory;
+import org.geotools.geopkg.GeoPkgDataStoreFactory;
+import org.geotools.geopkg.mosaic.GeoPackageFormatFactorySpi;
 import org.junit.Test;
 
 /**
@@ -82,7 +87,7 @@ public class DataAccessNewPageTest extends GeoServerWicketTestSupport {
 
         WorkspaceInfo defaultWs = getCatalog().getDefaultWorkspace();
 
-        tester.assertModelValue("dataStoreForm:workspacePanel:border:paramValue", defaultWs);
+        tester.assertModelValue("dataStoreForm:workspacePanel:border:border_body:paramValue", defaultWs);
 
         WorkspaceInfo anotherWs = getCatalog().getFactory().createWorkspace();
         anotherWs.setName("anotherWs");
@@ -92,7 +97,7 @@ public class DataAccessNewPageTest extends GeoServerWicketTestSupport {
         anotherWs = getCatalog().getDefaultWorkspace();
 
         startPage();
-        tester.assertModelValue("dataStoreForm:workspacePanel:border:paramValue", anotherWs);
+        tester.assertModelValue("dataStoreForm:workspacePanel:border:border_body:paramValue", anotherWs);
 
     }
 
@@ -100,7 +105,7 @@ public class DataAccessNewPageTest extends GeoServerWicketTestSupport {
     public void testDefaultNamespace() {
 
         // final String namespacePath =
-        // "dataStoreForm:parameters:1:parameterPanel:border:paramValue";
+        // "dataStoreForm:parameters:1:parameterPanel:border:border_body:paramValue";
         final String namespacePath = "dataStoreForm:parametersPanel:parameters:1:parameterPanel:paramValue";
 
         startPage();
@@ -135,6 +140,18 @@ public class DataAccessNewPageTest extends GeoServerWicketTestSupport {
         //
         // assertEquals(expectedNamespace, assignedNamespace);
 
+    }
+    
+    @Test
+    public void testGeoPackagePage() {
+        final String displayName = new GeoPkgDataStoreFactory().getDisplayName();
+        final AbstractDataAccessPage page = new DataAccessNewPage(displayName);
+        tester.startPage(page);
+        
+        tester.debugComponentTrees();
+        // the "database" key is the second, should be a file panel
+        Component component = tester.getComponentFromLastRenderedPage("dataStoreForm:parametersPanel:parameters:1:parameterPanel");
+        assertThat(component, instanceOf(FileParamPanel.class));
     }
 
 }

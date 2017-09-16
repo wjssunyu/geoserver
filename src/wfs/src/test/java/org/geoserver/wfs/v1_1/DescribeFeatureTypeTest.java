@@ -20,7 +20,7 @@ import org.geoserver.catalog.NamespaceInfo;
 import org.geoserver.config.GeoServer;
 import org.geoserver.data.test.CiteTestData;
 import org.geoserver.data.test.SystemTestData;
-import org.geoserver.data.util.IOUtils;
+import org.geoserver.util.IOUtils;
 import org.geoserver.wfs.GMLInfo;
 import org.geoserver.wfs.WFSInfo;
 import org.geoserver.wfs.WFSTestSupport;
@@ -120,9 +120,8 @@ public class DescribeFeatureTypeTest extends WFSTestSupport {
     }
 
     /**
-     * See http://jira.codehaus.org/browse/GEOS-3306
+     * See https://osgeo-org.atlassian.net/browse/GEOS-3306
      * 
-     * @throws Exception
      */
     @Test
     public void testUerSuppliedTypeNameNamespace() throws Exception {
@@ -136,9 +135,8 @@ public class DescribeFeatureTypeTest extends WFSTestSupport {
     }
 
     /**
-     * See http://jira.codehaus.org/browse/GEOS-3306
+     * See https://osgeo-org.atlassian.net/browse/GEOS-3306
      * 
-     * @throws Exception
      */
     @Test
     public void testUerSuppliedTypeNameDefaultNamespace() throws Exception {
@@ -167,7 +165,6 @@ public class DescribeFeatureTypeTest extends WFSTestSupport {
      * addresses the typeName either by qualifying it as declared in the getcaps document, or
      * providing an alternate prefix with its corresponding prefix to namespace mapping.
      * 
-     * @throws Exception
      */
     @Test
     public void testCiteCompliance() throws Exception {
@@ -213,9 +210,8 @@ public class DescribeFeatureTypeTest extends WFSTestSupport {
     }
     
     /**
-     * See http://jira.codehaus.org/browse/GEOS-3306
+     * See https://osgeo-org.atlassian.net/browse/GEOS-3306
      * 
-     * @throws Exception
      */
     @Test
     public void testPrefixedGetStrictCite() throws Exception {

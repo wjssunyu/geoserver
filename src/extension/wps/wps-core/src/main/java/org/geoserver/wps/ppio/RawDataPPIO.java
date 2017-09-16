@@ -1,20 +1,19 @@
-/* (c) 2014 Open Source Geospatial Foundation - all rights reserved
+/* (c) 2014 - 2015 Open Source Geospatial Foundation - all rights reserved
  * (c) 2014 OpenPlans
  * This code is licensed under the GPL 2.0 license, available at the root
  * application directory.
  */
 package org.geoserver.wps.ppio;
 
-import java.io.File;
 import java.io.InputStream;
 import java.io.OutputStream;
 import java.util.logging.Logger;
 
-import org.apache.commons.io.FileUtils;
-import org.apache.commons.io.IOUtils;
 import org.geoserver.platform.resource.Resource;
+import org.geoserver.util.IOUtils;
+import org.geoserver.wps.RawDataEncoderDelegate;
 import org.geoserver.wps.process.AbstractRawData;
-import org.geoserver.wps.process.FileRawData;
+import org.geoserver.wps.process.ResourceRawData;
 import org.geoserver.wps.process.RawData;
 import org.geoserver.wps.process.StreamRawData;
 import org.geoserver.wps.resource.WPSResourceManager;
@@ -40,9 +39,8 @@ public class RawDataPPIO extends ComplexPPIO {
     public Object decode(InputStream input, String mimeType, boolean asynchronous) throws Exception {
         if (asynchronous) {
             Resource tmp = resourceManager.getTemporaryResource(".bin");
-            File file = tmp.file();
-            FileUtils.copyInputStreamToFile(input, file);
-            return new FileRawData(file, mimeType);
+            IOUtils.copy(input, tmp.out());
+            return new ResourceRawData(tmp, mimeType);
         } else {
             return new StreamRawData(mimeType, input);
         }
@@ -51,13 +49,26 @@ public class RawDataPPIO extends ComplexPPIO {
     @Override
     public void encode(Object value, OutputStream os) throws Exception {
         RawData rd = (RawData) value;
-        IOUtils.copy(rd.getInputStream(), os);
+
+        try (InputStream is = rd.getInputStream()) {
+            IOUtils.copy(is, os);
+        };
     }
 
     @Override
-    public String getFileExtension() {
-        LOGGER.warning("Code is grabbing the default file extension to generate the output, it should look in the RawData instead");
-        return AbstractRawData.DEFAULT_EXTENSION;
+    public String getFileExtension(Object value) {
+        RawData rd;
+        if (value instanceof RawDataEncoderDelegate) {
+            rd = ((RawDataEncoderDelegate) value).getRawData();
+        } else {
+            rd = (RawData) value;
+        }
+
+        if (rd == null || rd.getFileExtension() == null) {
+            return AbstractRawData.DEFAULT_EXTENSION;
+        } else {
+            return rd.getFileExtension();
+        }
     }
 
 }

@@ -9,20 +9,16 @@ import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertTrue;
 
-import java.io.File;
-
-import org.geoserver.config.GeoServerDataDirectory;
-import org.geoserver.platform.GeoServerResourceLoader;
-import org.geoserver.security.GeoServerSecurityManager;
-import org.junit.After;
+import org.geoserver.security.impl.GeoServerRole;
+import org.geoserver.security.impl.MemoryRoleService;
+import org.geoserver.security.impl.MemoryRoleStore;
 import org.junit.Assume;
-import org.junit.Before;
 import org.junit.Test;
-import org.springframework.ldap.test.LdapTestUtils;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.core.GrantedAuthority;
-import org.springframework.security.core.context.SecurityContextHolder;
+
+import java.util.Collections;
 
 /**
  * 
@@ -43,7 +39,6 @@ public class LDAPAuthenticationProviderTest extends LDAPBaseTest {
      * Test that bindBeforeGroupSearch correctly enables roles fetching on a
      * server without anonymous access enabled.
      * 
-     * @throws Exception
      */
     @Test
     public void testBindBeforeGroupSearch() throws Exception {
@@ -65,7 +60,6 @@ public class LDAPAuthenticationProviderTest extends LDAPBaseTest {
      * Test that without bindBeforeGroupSearch we get an exception during roles
      * fetching on a server without anonymous access enabled.
      * 
-     * @throws Exception
      */
     @Test
     public void testBindBeforeGroupSearchRequiredIfAnonymousDisabled()
@@ -90,7 +84,6 @@ public class LDAPAuthenticationProviderTest extends LDAPBaseTest {
      * Test that authentication can be done using the couple userFilter and
      * userFormat instead of userDnPattern.
      * 
-     * @throws Exception
      */
     @Test
     public void testUserFilterAndFormat() throws Exception {
@@ -111,7 +104,6 @@ public class LDAPAuthenticationProviderTest extends LDAPBaseTest {
      * Test that authentication can be done using the couple userFilter and
      * userFormat instead of userDnPattern, using placemarks in userFilter.
      * 
-     * @throws Exception
      */
     @Test
     public void testUserFilterPlacemarks() throws Exception {
@@ -142,7 +134,6 @@ public class LDAPAuthenticationProviderTest extends LDAPBaseTest {
      * Test that if and adminGroup is defined, the roles contain
      * ROLE_ADMINISTRATOR
      * 
-     * @throws Exception
      */
     @Test
     public void testAdminGroup() throws Exception {
@@ -167,7 +158,6 @@ public class LDAPAuthenticationProviderTest extends LDAPBaseTest {
      * Test that if and groupAdminGroup is defined, the roles contain
      * ROLE_GROUP_ADMIN
      * 
-     * @throws Exception
      */
     @Test
     public void testGroupAdminGroup() throws Exception {
@@ -186,6 +176,53 @@ public class LDAPAuthenticationProviderTest extends LDAPBaseTest {
             }
         }
         assertTrue(foundAdmin);
+    }
+    
+    /**
+     * Test that active role service is applied in the LDAPAuthenticationProvider
+     * 
+     */
+    @Test
+    public void testRoleService() throws Exception {
+        Assume.assumeTrue(LDAPTestUtils.initLdapServer(true, ldapServerUrl,
+                basePath));
+        ((LDAPSecurityServiceConfig)config).setUserDnPattern("uid={0},ou=People");
+        
+        createAuthenticationProvider();
+                
+        authProvider.setSecurityManager(securityManager);
+        securityManager.setProviders(Collections.singletonList(authProvider));
+        MemoryRoleStore roleService = new MemoryRoleStore();
+        roleService.initializeFromService(new MemoryRoleService());
+        roleService.setSecurityManager(securityManager);
+        GeoServerRole role = roleService.createRoleObject("MyRole");
+        roleService.addRole(role);
+        roleService.associateRoleToUser(role, "other");
+        securityManager.setActiveRoleService(roleService);
+
+        Authentication result = authProvider.authenticate(authenticationOther);
+        assertTrue(result.getAuthorities().contains(role));
+        assertEquals(3, result.getAuthorities().size());
+        
+    }
+    
+    /**
+     * Test that LDAPAuthenticationProvider finds roles even if there is a colon in 
+     * the password
+     * 
+     */
+    @Test
+    public void testColonPassword() throws Exception {
+        Assume.assumeTrue(LDAPTestUtils.initLdapServer(true, ldapServerUrl,
+                basePath, "data3.ldif"));
+        ((LDAPSecurityServiceConfig)config).setUserDnPattern("uid={0},ou=People");
+        
+        createAuthenticationProvider();
+
+        authentication = new UsernamePasswordAuthenticationToken("colon","da:da");
+        
+        Authentication result = authProvider.authenticate(authentication);
+        assertEquals(2, result.getAuthorities().size());
     }
     
 

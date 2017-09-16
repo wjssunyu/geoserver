@@ -1,4 +1,4 @@
-/* (c) 2014 Open Source Geospatial Foundation - all rights reserved
+/* (c) 2014 - 2016 Open Source Geospatial Foundation - all rights reserved
  * (c) 2001 - 2013 OpenPlans
  * This code is licensed under the GPL 2.0 license, available at the root
  * application directory.
@@ -7,7 +7,6 @@ package org.geoserver.security.web;
 
 import static org.geoserver.security.web.SecurityNamedServiceProvider.NAME;
 
-import java.io.Serializable;
 import java.util.ArrayList;
 import java.util.Iterator;
 import java.util.List;
@@ -20,7 +19,6 @@ import org.apache.wicket.markup.html.panel.FeedbackPanel;
 import org.apache.wicket.markup.html.panel.Panel;
 import org.apache.wicket.model.IModel;
 import org.apache.wicket.model.ResourceModel;
-import org.apache.wicket.model.StringResourceModel;
 import org.geoserver.security.GeoServerSecurityManager;
 import org.geoserver.security.config.SecurityNamedServiceConfig;
 import org.geoserver.security.validation.SecurityConfigException;
@@ -102,14 +100,14 @@ public abstract class SecurityNamedServicesPanel<T extends SecurityNamedServiceC
 
                         @Override
                         public void onClose(AjaxRequestTarget target) {
-                            target.addComponent(tablePanel);
-                            target.addComponent(feedbackPanel);
+                            target.add(tablePanel);
+                            target.add(feedbackPanel);
                         }
                     });
                 }
                 
                 //render any feedback
-                target.addComponent(feedbackPanel);
+                target.add(feedbackPanel);
             }
         });
         removeLink.setEnabled(false);
@@ -118,7 +116,7 @@ public abstract class SecurityNamedServicesPanel<T extends SecurityNamedServiceC
             @Override
             protected void onSelectionUpdate(AjaxRequestTarget target) {
                 if (isAdmin) {
-                    target.addComponent(removeLink.setEnabled(!getSelection().isEmpty()));
+                    target.add(removeLink.setEnabled(!getSelection().isEmpty()));
                 }
             }
         });
@@ -224,7 +222,7 @@ public abstract class SecurityNamedServicesPanel<T extends SecurityNamedServiceC
         }
     
         @Override
-        protected Component getComponentForProperty(String id, IModel itemModel, Property<T> property) {
+        protected Component getComponentForProperty(String id, IModel<T> itemModel, Property<T> property) {
             if (property == NAME) {
                 return createEditLink(id, itemModel, property);
             }

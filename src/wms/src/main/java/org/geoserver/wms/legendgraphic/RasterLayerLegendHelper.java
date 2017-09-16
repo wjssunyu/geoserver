@@ -1,4 +1,4 @@
-/* (c) 2014 Open Source Geospatial Foundation - all rights reserved
+/* (c) 2014 - 2016 Open Source Geospatial Foundation - all rights reserved
  * (c) 2001 - 2013 OpenPlans
  * This code is licensed under the GPL 2.0 license, available at the root
  * application directory.
@@ -24,6 +24,7 @@ import org.geoserver.platform.resource.Paths;
 import org.geoserver.platform.resource.Resource;
 import org.geoserver.platform.resource.Resource.Type;
 import org.geoserver.wms.GetLegendGraphicRequest;
+import org.geoserver.wms.legendgraphic.Cell.ColorMapEntryLegendBuilder;
 import org.geoserver.wms.legendgraphic.ColorMapLegendCreator.Builder;
 import org.geoserver.wms.map.ImageUtils;
 import org.geotools.styling.ChannelSelection;
@@ -51,8 +52,6 @@ public class RasterLayerLegendHelper {
         try {
             GeoServerResourceLoader loader = GeoServerExtensions.bean(GeoServerResourceLoader.class);
             Resource rasterLegend = loader.get( Paths.path("styles","rasterLegend.png"));
-//            final File stylesDirectory = GeoserverDataDirectory.findCreateConfigDir("styles");
-//            final File rasterLegend = new File(stylesDirectory, "rasterLegend.png");
             if (rasterLegend.getType() == Type.RESOURCE ){
                 imgShape = ImageIO.read(rasterLegend.file());
             }
@@ -177,20 +176,43 @@ public class RasterLayerLegendHelper {
             // Setting label font and font bkgColor
             cmapLegendBuilder.setLabelFont(LegendUtils.getLabelFont(request));
             cmapLegendBuilder.setLabelFontColor(LegendUtils.getLabelFontColor(request));
+            
+            // Setting layout parameters
+            cmapLegendBuilder.setLayout(LegendUtils.getLayout(request));
+            cmapLegendBuilder.setColumnHeight(LegendUtils.getColumnHeight(request));
+            cmapLegendBuilder.setRowWidth(LegendUtils.getRowWidth(request));
+            cmapLegendBuilder.setColumns(LegendUtils.getColumns(request));
+            cmapLegendBuilder.setRows(LegendUtils.getRows(request));
+            
+            cmapLegendBuilder.setLabelFontColor(LegendUtils.getLabelFontColor(request));
+
 
             // set band
             final ChannelSelection channelSelection = rasterSymbolizer.getChannelSelection();
             cmapLegendBuilder.setBand(channelSelection != null ? channelSelection.getGrayChannel()
                     : null);
 
-            // adding the colormap entries
-            final ColorMapEntry[] colorMapEntries = cmap.getColorMapEntries();
-            for (ColorMapEntry ce : colorMapEntries)
-                if (ce != null)
-                    cmapLegendBuilder.addColorMapEntry(ce);
-
             // check the additional options before proceeding
             cmapLegendBuilder.checkAdditionalOptions();
+
+            // adding the colormap entries
+            final ColorMapEntry[] colorMapEntries = cmap.getColorMapEntries();
+            ColorMapEntryLegendBuilder lastEntry = null;
+            boolean first = true;
+            for (ColorMapEntry ce : colorMapEntries) {
+                if(ce == null) {
+                    continue;
+                }
+                final Double qty = ce.getQuantity().evaluate(null, Double.class);
+                if(cmap.getType() == ColorMap.TYPE_INTERVALS && first && qty < 0 && Double.isInfinite(qty)) {
+                    continue;
+                }
+                lastEntry = cmapLegendBuilder.addColorMapEntry(ce);
+                first = false;
+            }
+            if(lastEntry != null) {
+                lastEntry.setLastRow();
+            }
 
             // instantiate the creator
             cMapLegendCreator = cmapLegendBuilder.create();
@@ -268,6 +290,10 @@ public class RasterLayerLegendHelper {
         // blue border
         graphics.setColor(Color.BLUE);
         graphics.drawRect(0, 0, width - 1, height -1 );
+    }
+    
+    protected ColorMapLegendCreator getcMapLegendCreator() {
+        return cMapLegendCreator;
     }
 
 }

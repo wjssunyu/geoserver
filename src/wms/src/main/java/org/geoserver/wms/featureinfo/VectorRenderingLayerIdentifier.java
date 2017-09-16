@@ -1,4 +1,4 @@
-/* (c) 2014 Open Source Geospatial Foundation - all rights reserved
+/* (c) 2014 - 2015 Open Source Geospatial Foundation - all rights reserved
  * (c) 2013 OpenPlans
  * This code is licensed under the GPL 2.0 license, available at the root
  * application directory.
@@ -38,6 +38,7 @@ import org.geoserver.platform.ExtensionPriority;
 import org.geoserver.platform.ServiceException;
 import org.geoserver.security.decorators.DecoratingFeatureSource;
 import org.geoserver.wms.FeatureInfoRequestParameters;
+import org.geoserver.wms.GetMapOutputFormat;
 import org.geoserver.wms.GetMapRequest;
 import org.geoserver.wms.MapLayerInfo;
 import org.geoserver.wms.RenderingVariables;
@@ -77,6 +78,7 @@ import org.opengis.filter.Filter;
 import org.opengis.filter.FilterFactory2;
 import org.opengis.filter.spatial.BBOX;
 import org.opengis.referencing.FactoryException;
+import org.opengis.referencing.crs.CoordinateReferenceSystem;
 import org.opengis.referencing.operation.TransformException;
 
 import com.vividsolutions.jts.geom.Envelope;
@@ -92,19 +94,19 @@ public class VectorRenderingLayerIdentifier extends AbstractVectorLayerIdentifie
         ExtensionPriority {
 
     static final Logger LOGGER = Logging.getLogger(VectorRenderingLayerIdentifier.class);
-    private static final String FEAUTURE_INFO_RENDERING_ENABLED_KEY = "org.geoserver.wms.featureinfo.render.enabled";
+    private static final String FEATURE_INFO_RENDERING_ENABLED_KEY = "org.geoserver.wms.featureinfo.render.enabled";
     protected static final int MIN_BUFFER_SIZE = Integer.getInteger("org.geoserver.wms.featureinfo.render.minBuffer", 3);
-    protected static boolean RENDERING_FEATUREINFO_ENABLED;
+    public static boolean RENDERING_FEATUREINFO_ENABLED;
     
     private WMS wms;
     private VectorBasicLayerIdentifier fallback;
     private static final FilterFactory2 FF = CommonFactoryFinder.getFilterFactory2();
     
     static {
-        String value = System.getProperty(FEAUTURE_INFO_RENDERING_ENABLED_KEY, "true");
+        String value = System.getProperty(FEATURE_INFO_RENDERING_ENABLED_KEY, "true");
         RENDERING_FEATUREINFO_ENABLED = Boolean.valueOf(value);
         if(!RENDERING_FEATUREINFO_ENABLED) {
-            LOGGER.info("Rendering based GetFeatureInfo disabled since " + FEAUTURE_INFO_RENDERING_ENABLED_KEY + " is set to " + value);
+            LOGGER.info("Rendering based GetFeatureInfo disabled since " + FEATURE_INFO_RENDERING_ENABLED_KEY + " is set to " + value);
         }
     }
 
@@ -126,7 +128,7 @@ public class VectorRenderingLayerIdentifier extends AbstractVectorLayerIdentifie
     @Override
     public List<FeatureCollection> identify(FeatureInfoRequestParameters params,
             final int maxFeatures) throws Exception {
-        LOGGER.log(Level.FINER, "Appliying rendering based feature info identifier");
+        LOGGER.log(Level.FINER, "Applying rendering based feature info identifier");
         
         // at the moment the new identifier works only with simple features due to a limitation
         // in the StreamingRenderer
@@ -136,7 +138,7 @@ public class VectorRenderingLayerIdentifier extends AbstractVectorLayerIdentifie
         
         final Style style = preprocessStyle(params.getStyle(), params.getLayer().getFeature().getFeatureType());
         final int userBuffer = params.getBuffer() > 0 ? params.getBuffer() : MIN_BUFFER_SIZE;
-        final int buffer = Math.min(userBuffer, wms.getMaxBuffer());
+        final int buffer = getBuffer(userBuffer);
 
         // check the style to see what's active
         final List<Rule> rules = getActiveRules(style, params.getScaleDenominator());
@@ -144,6 +146,7 @@ public class VectorRenderingLayerIdentifier extends AbstractVectorLayerIdentifie
             return null;
         }
         GetMapRequest getMap = params.getGetMapRequest();
+        getMap.getFormatOptions().put("antialias", "NONE");
         WMSMapContent mc = new WMSMapContent(getMap);
         try {
             // prepare the fake web map content
@@ -175,7 +178,7 @@ public class VectorRenderingLayerIdentifier extends AbstractVectorLayerIdentifie
             Envelope targetModelSpace = JTS.transform(targetRasterSpace, new AffineTransform2D(screenToWorld));
             
             // prepare the image we are going to check rendering against
-            int paintAreaSize = radius * 2 + 1;
+            int paintAreaSize = radius * 2;
             final BufferedImage image = ImageTypeSpecifier.createFromBufferedImageType(
                     BufferedImage.TYPE_INT_ARGB).createBufferedImage(paintAreaSize,
                     paintAreaSize);
@@ -184,6 +187,9 @@ public class VectorRenderingLayerIdentifier extends AbstractVectorLayerIdentifie
             // and now the listener that will check for painted pixels
             int mid = radius;
             int hitAreaSize = buffer * 2 + 1;
+            if(hitAreaSize > paintAreaSize) {
+                hitAreaSize = paintAreaSize;
+            }
             Rectangle hitArea = new Rectangle(mid - buffer, mid - buffer, hitAreaSize, hitAreaSize);
             final FeatureInfoRenderListener featureInfoListener = new FeatureInfoRenderListener(
                     image, hitArea, maxFeatures, params.getPropertyNames());
@@ -194,46 +200,56 @@ public class VectorRenderingLayerIdentifier extends AbstractVectorLayerIdentifie
             mc.setMapHeight(paintAreaSize);
             
             // and now run the rendering _almost_ like a GetMap
-            RenderedImageMapOutputFormat rim = new RenderedImageMapOutputFormat(wms) {
-    
-                private Graphics2D graphics;
-
-                @Override
-                protected RenderedImage prepareImage(int width, int height, IndexColorModel palette,
-                        boolean transparent) {
-                    return image;
-                }
-
-                @Override
-                protected Graphics2D getGraphics(boolean transparent, Color bgColor,
-                        RenderedImage preparedImage, Map<Key, Object> hintsMap) {
-                    graphics = super.getGraphics(transparent, bgColor, preparedImage,
-                            hintsMap);
-                    return graphics;
-                }
-    
-                @Override
-                protected void onBeforeRender(StreamingRenderer renderer) {
-                    // force the renderer into serial painting mode, as we need to check what
-                    // was painted to decide which features to include in the results
-                    Map hints = renderer.getRendererHints();
-                    hints.put(StreamingRenderer.OPTIMIZE_FTS_RENDERING_KEY, Boolean.FALSE);
-                    // disable antialiasing to speed up rendering
-                    hints.put(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_OFF);
-    
-                    // TODO: should we disable the screenmap as well?
-                    featureInfoListener.setGraphics(graphics);
-                    featureInfoListener.setRenderer(renderer);
-                    renderer.addRenderListener(featureInfoListener);
-                }
-            };
+            GetMapOutputFormat rim = createMapOutputFormat(image, featureInfoListener);
             rim.produceMap(mc);
             
             List<SimpleFeature> features = featureInfoListener.getFeatures();
-            return aggregateByFeatureType(features);
+
+            return aggregateByFeatureType(features, params.getRequestedCRS());
         } finally {
             mc.dispose();
         }
+    }
+
+    protected int getBuffer(final int userBuffer) {
+        return Math.min(userBuffer, wms.getMaxBuffer());
+    }
+
+    protected GetMapOutputFormat createMapOutputFormat(final BufferedImage image,
+            final FeatureInfoRenderListener featureInfoListener) {
+        return new RenderedImageMapOutputFormat(wms) {
+   
+            private Graphics2D graphics;
+
+            @Override
+            protected RenderedImage prepareImage(int width, int height, IndexColorModel palette,
+                    boolean transparent) {
+                return image;
+            }
+
+            @Override
+            protected Graphics2D getGraphics(boolean transparent, Color bgColor,
+                    RenderedImage preparedImage, Map<Key, Object> hintsMap) {
+                graphics = super.getGraphics(transparent, bgColor, preparedImage,
+                        hintsMap);
+                return graphics;
+            }
+   
+            @Override
+            protected void onBeforeRender(StreamingRenderer renderer) {
+                // force the renderer into serial painting mode, as we need to check what
+                // was painted to decide which features to include in the results
+                Map hints = renderer.getRendererHints();
+                hints.put(StreamingRenderer.OPTIMIZE_FTS_RENDERING_KEY, Boolean.FALSE);
+                // disable antialiasing to speed up rendering
+                hints.put(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_OFF);
+   
+                // TODO: should we disable the screenmap as well?
+                featureInfoListener.setGraphics(graphics);
+                featureInfoListener.setRenderer(renderer);
+                renderer.addRenderListener(featureInfoListener);
+            }
+        };
     }
 
     private void rescaleRules(List<Rule> rules, FeatureInfoRequestParameters params) {
@@ -273,7 +289,7 @@ public class VectorRenderingLayerIdentifier extends AbstractVectorLayerIdentifie
         return result;
     }
 
-    private List<FeatureCollection> aggregateByFeatureType(List<? extends Feature> features) {
+    private List<FeatureCollection> aggregateByFeatureType(List<? extends Feature> features, CoordinateReferenceSystem targetcrs) {
         // group by feature type (rendering transformations might cause us to get more
         // than one type from the original layer)
         Map<FeatureType, List<Feature>> map = new HashMap<FeatureType, List<Feature>>();
@@ -298,7 +314,14 @@ public class VectorRenderingLayerIdentifier extends AbstractVectorLayerIdentifie
                 result.add(new ListComplexFeatureCollection(type, list));
             }
         }
-        
+
+        // let's see if we need to reproject
+        if (!wms.isFeaturesReprojectionDisabled()) {
+            // try to reproject to target CRS
+            return LayerIdentifierUtils.reproject(result, targetcrs);
+        }
+
+        // reprojection no allowed
         return result;
     }
 
@@ -324,6 +347,7 @@ public class VectorRenderingLayerIdentifier extends AbstractVectorLayerIdentifie
         final Query definitionQuery = new Query(featureSource.getSchema().getName().getLocalPart());
         definitionQuery.setVersion(getMap.getFeatureVersion());
         definitionQuery.setFilter(filter);
+        definitionQuery.setSortBy(params.getSort());
         Map<String, String> viewParams = params.getViewParams();
         if (viewParams != null) {
             definitionQuery.setHints(new Hints(Hints.VIRTUAL_TABLE_PARAMETERS, viewParams));
@@ -626,8 +650,8 @@ public class VectorRenderingLayerIdentifier extends AbstractVectorLayerIdentifie
      * 
      * @author Andrea Aime - GeoSolutions
      * 
-     * @param <T>
-     * @param <F>
+     * @param <T> FeatureType
+     * @param <F> Feature
      */
     static class FeatureInfoFeatureSource extends DecoratingFeatureSource<FeatureType, Feature> {
 

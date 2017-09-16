@@ -49,7 +49,7 @@ When finished, click :guilabel:`Save`.
 Configuring external WMS layers
 -------------------------------
 
-When properly loaded, all layers served by the external WMS will be available to GeoServer.  Before they can be served, however, they will need to be individually configured (published) as new layers.  See the section on :ref:`webadmin_layers` for how to add and edit new layers.  Once published, these layers will show up in the :ref:`layerpreview` and as part of the WMS capabilities document.
+When properly loaded, all layers served by the external WMS will be available to GeoServer.  Before they can be served, however, they will need to be individually configured (published) as new layers.  See the section on :ref:`data_webadmin_layers` for how to add and edit new layers.  Once published, these layers will show up in the :ref:`layerpreview` and as part of the WMS capabilities document.
 
 Features
 --------
@@ -76,5 +76,3 @@ Layers served through an external WMS have some, but not all of the functionalit
 * GetLegendGraphic requests aren't supported.
 
 * Image format cannot be specified.  GeoServer will attempt to request PNG images, and if that fails will use the remote server's default image format.
-
-* Authentication for the remote WMS isn't supported.  The remote WMS must be unsecured.

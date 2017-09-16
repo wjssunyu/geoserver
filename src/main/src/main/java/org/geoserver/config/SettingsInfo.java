@@ -1,4 +1,4 @@
-/* (c) 2014 Open Source Geospatial Foundation - all rights reserved
+/* (c) 2014 - 2016 Open Source Geospatial Foundation - all rights reserved
  * (c) 2001 - 2013 OpenPlans
  * This code is licensed under the GPL 2.0 license, available at the root
  * application directory.
@@ -75,9 +75,15 @@ public interface SettingsInfo extends Info {
     void setNumDecimals(int numDecimals);
 
     /**
-     * TODO: not sure what this is supposed to do.
+     * Provider web site (used for default contact information, or service provider information if user has not filled in contact details.
      */
     String getOnlineResource();
+    
+    /**
+     * Provider web site (used for default contact information, or service provider information if user has not filled in contact details.
+     * 
+     * @param onlineResource Provider website
+     */
     void setOnlineResource(String onlineResource);
 
     /**
@@ -105,15 +111,16 @@ public interface SettingsInfo extends Info {
     void setSchemaBaseUrl(String schemaBaseUrl);
 
     /**
-     * Verbosity flag.
+     * Sets indent level for XML output, causing output to be more verbose.
      * <p>
-     * When set GeoServer will log extra information it normally would not.
-     * </p>
+     * Then set to false GeoServer will also take step so to strip out some formating and produce more condensed output.
      */
     boolean isVerbose();
 
     /**
-     * Sets verbosity flag.
+     * Sets indent level for XML output, causing output to be more verbose.
+     * <p>
+     * Then set to false GeoServer will also take step so to strip out some formating and produce more condensed output.
      */
     void setVerbose(boolean verbose);
 

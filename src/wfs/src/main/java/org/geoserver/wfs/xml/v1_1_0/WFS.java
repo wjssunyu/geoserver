@@ -1,16 +1,14 @@
-/* (c) 2014 Open Source Geospatial Foundation - all rights reserved
+/* (c) 2014 - 2015 Open Source Geospatial Foundation - all rights reserved
  * (c) 2001 - 2013 OpenPlans
  * This code is licensed under the GPL 2.0 license, available at the root
  * application directory.
  */
 package org.geoserver.wfs.xml.v1_1_0;
 
-import java.io.IOException;
 import java.util.Set;
 
 import javax.xml.namespace.QName;
 
-import org.eclipse.xsd.XSDSchema;
 import org.geoserver.ows.xml.v1_0.OWS;
 import org.geoserver.wfs.xml.FeatureTypeSchemaBuilder;
 import org.geotools.filter.v1_1.OGC;
@@ -299,17 +297,6 @@ public class WFS extends XSD {
      * Returns the location of 'wfs.xsd'
      */
     public String getSchemaLocation() {
-        return getClass().getResource( "wfs.xsd" ).toString();
+        return org.geotools.wfs.v1_1.WFS.class.getResource( "wfs.xsd" ).toString();
     }
-    
-    /**
-     * Suplements the schema built by the parent by adding hte aplication schema
-     * feature typs defined in GeoServer.
-     */
-    protected XSDSchema buildSchema() throws IOException {
-        XSDSchema wfsSchema = super.buildSchema();
-        wfsSchema = schemaBuilder.addApplicationTypes(wfsSchema);
-        return wfsSchema;
-    }
-    
 }

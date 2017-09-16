@@ -7,6 +7,8 @@ package org.geoserver.platform;
 
 import java.io.File;
 import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.Collection;
 import java.util.Collections;
 import java.util.Comparator;
 import java.util.Iterator;
@@ -35,11 +37,9 @@ import org.springframework.web.context.WebApplicationContext;
  * Utility class uses to process GeoServer extension points.
  * <p>
  * An instance of this class needs to be registered in spring context as follows.
- * <code>
- *         <pre>
+ * <pre><code>
  *         &lt;bean id="geoserverExtensions" class="org.geoserver.GeoServerExtensions"/&gt;
- *         </pre>
- * </code>
+ * </code></pre>
  * It must be a singleton, and must not be loaded lazily. Furthermore, this
  * bean must be loaded before any beans that use it.
  * 
@@ -122,37 +122,8 @@ public class GeoServerExtensions implements ApplicationContextAware, Application
      */
     @SuppressWarnings("unchecked")
     public static final <T> List<T> extensions(Class<T> extensionPoint, ApplicationContext context) {
-        String[] names;
-        if(GeoServerExtensions.context == context){
-            names = extensionsCache.get(extensionPoint);
-        }else{
-            names = null;
-        }
-        if(names == null) {
-            checkContext(context,extensionPoint.getSimpleName());
-            if ( context != null ) {
-                try {
-                    names = context.getBeanNamesForType(extensionPoint);
-                    if( names == null ){
-                        names = new String[0];
-                    }
-                    //update cache only if dealing with the same context
-                    if(GeoServerExtensions.context == context){
-                        extensionsCache.put(extensionPoint, names);
-                    }
-                }
-                catch( Exception e ) {
-                    //JD: this can happen during testing... if the application 
-                    // context has been closed and a non-one time setup test is
-                    // run that triggers an extension lookup
-                    LOGGER.log( Level.WARNING, "bean lookup error", e );
-                    return Collections.EMPTY_LIST;
-                }
-            }
-            else {
-                return Collections.EMPTY_LIST;
-            }
-        }
+        Collection<String> names;
+        names = extensionNames(extensionPoint, context);
         
         // lookup extension filters preventing recursion
         List<ExtensionFilter> filters;
@@ -163,7 +134,7 @@ public class GeoServerExtensions implements ApplicationContextAware, Application
         }
         
         // look up all the beans
-        List<T> result = new ArrayList<T>(names.length);
+        List<T> result = new ArrayList<T>(names.size());
         for(String name : names) {
             Object bean = getBean(context, name);
             if(!excludeBean(name, bean, filters))
@@ -220,6 +191,46 @@ public class GeoServerExtensions implements ApplicationContextAware, Application
         
         return result;
     }
+    
+    public static <T> Collection<String> extensionNames(Class<T> extensionPoint) {
+        return extensionNames(extensionPoint, context);
+    }
+    
+    public static <T> Collection<String> extensionNames(Class<T> extensionPoint,
+            ApplicationContext context) {
+        String[] names;
+        if(GeoServerExtensions.context == context){
+            names = extensionsCache.get(extensionPoint);
+        }else{
+            names = null;
+        }
+        if(names == null) {
+            checkContext(context,extensionPoint.getSimpleName());
+            if ( context != null ) {
+                try {
+                    names = context.getBeanNamesForType(extensionPoint);
+                    if( names == null ){
+                        names = new String[0];
+                    }
+                    //update cache only if dealing with the same context
+                    if(GeoServerExtensions.context == context){
+                        extensionsCache.put(extensionPoint, names);
+                    }
+                }
+                catch( Exception e ) {
+                    //JD: this can happen during testing... if the application 
+                    // context has been closed and a non-one time setup test is
+                    // run that triggers an extension lookup
+                    LOGGER.log( Level.WARNING, "bean lookup error", e );
+                    return Collections.emptyList();
+                }
+            }
+            else {
+                return Collections.emptyList();
+            }
+        }
+        return Arrays.asList(names);
+    }
 
     private static Object getBean(ApplicationContext context, String name) {
         Object bean = singletonBeanCache.get(name);
@@ -267,7 +278,7 @@ public class GeoServerExtensions implements ApplicationContextAware, Application
     /**
      * Returns a specific bean given its name
      * @param name
-     * @return
+     *
      */
     public static final Object bean(String name) {
         return bean(name, context);
@@ -296,7 +307,7 @@ public class GeoServerExtensions implements ApplicationContextAware, Application
      *
      * @param type THe type of the bean to lookup.
      * 
-     * @throws IllegalArgumentException If there are multiple beans of the specified
+     * @throws MultipleBeansException If there are multiple beans of the specified
      * type in the context. 
      */
     public static final <T> T bean(Class<T> type) throws IllegalArgumentException {
@@ -314,7 +325,7 @@ public class GeoServerExtensions implements ApplicationContextAware, Application
      * @param type THe type of the bean to lookup.
      * @param context The application context
      * 
-     * @throws IllegalArgumentException If there are multiple beans of the specified
+     * @throws MultipleBeansException If there are multiple beans of the specified
      * type in the context. 
      */
     public static final <T> T bean(Class<T> type, ApplicationContext context) throws IllegalArgumentException {
@@ -324,10 +335,44 @@ public class GeoServerExtensions implements ApplicationContextAware, Application
         }
         
         if ( beans.size() > 1 ) {
-            throw new IllegalArgumentException( "Multiple beans of type " + type.getName() );
+            throw new MultipleBeansException(type, extensionNames(type, context));
         }
         
         return beans.get( 0 );
+    }
+    
+    /**
+     * 
+     * Exception thrown when multiple beans implementing an extension point and only one is expected.
+     *
+     */
+    public static class MultipleBeansException extends IllegalArgumentException {
+        /** serialVersionUID */
+        private static final long serialVersionUID = -8039187466594032626L;
+        
+        private final Class<?> extensionPoint;
+        private final Collection<String> availableBeans;
+        
+        public MultipleBeansException(Class<?> extensionPoint,
+                Collection<String> availableBeans) {
+            super("Multiple beans of type " + extensionPoint.getName());
+            this.extensionPoint = extensionPoint;
+            this.availableBeans = availableBeans;
+        }
+        
+        /**
+         * @return the extension point
+         */
+        public Class<?> getExtensionPoint() {
+            return extensionPoint;
+        }
+        
+        /**
+         * @return the names of the beans
+         */
+        public Collection<String> getAvailableBeans() {
+            return availableBeans;
+        }
     }
     
     public void onApplicationEvent(ApplicationEvent event) {
@@ -396,10 +441,10 @@ public class GeoServerExtensions implements ApplicationContextAware, Application
      * @return The property value, or null if not found
      */
     public static String getProperty(String propertyName, ServletContext context) {
-        // TODO: this code comes from the data directory lookup and it's useful as 
-        // long as we don't provide a way for the user to manually inspect the three contexts
-        // (when trying to debug why the variable they thing they've set, and so on, see also
-        // http://jira.codehaus.org/browse/GEOS-2343
+        // TODO: this code comes from the data directory lookup and it's useful
+        // until we provide a way for the user to manually inspect the three contexts
+        // (when trying to debug why the variable they think they've set, and so on, see also
+        // https://osgeo-org.atlassian.net/browse/GEOS-2343
         // Once that is fixed, we can remove the logging code that makes this method more complex
         // than strictly necessary
 

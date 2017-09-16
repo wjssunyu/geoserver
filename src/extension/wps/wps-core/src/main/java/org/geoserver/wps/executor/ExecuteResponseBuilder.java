@@ -1,4 +1,4 @@
-/* (c) 2014 Open Source Geospatial Foundation - all rights reserved
+/* (c) 2014 - 2015 Open Source Geospatial Foundation - all rights reserved
  * (c) 2001 - 2013 OpenPlans
  * This code is licensed under the GPL 2.0 license, available at the root
  * application directory.
@@ -116,7 +116,7 @@ public class ExecuteResponseBuilder {
 
         // process
         Name processName = helper.getProcessName();
-        ProcessFactory pf = GeoServerProcessors.createProcessFactory(processName);
+        ProcessFactory pf = GeoServerProcessors.createProcessFactory(processName, false);
         final ProcessBriefType process = f.createProcessBriefType();
         response.setProcess(process);
         // damn blasted EMF changes the state of request if we set its identifier on
@@ -276,7 +276,7 @@ public class ExecuteResponseBuilder {
                 output.setReference(outputReference);
                 
                 ComplexPPIO cppio = (ComplexPPIO) ppio;
-                String name = key + "." + cppio.getFileExtension();
+                String name = key + "." + cppio.getFileExtension(o);
                 Resource outputResource = resourceManager.getOutputResource(
                         status.getExecutionId(), name);
                 
@@ -320,7 +320,9 @@ public class ExecuteResponseBuilder {
                     ComplexPPIO cppio = (ComplexPPIO) ppio;
                     complex.setMimeType(cppio.getMimeType());
 
-                    if (cppio instanceof RawDataPPIO) {
+                    if (o == null) {
+                        complex.getData().add(null);
+                    } else if (cppio instanceof RawDataPPIO) {
                         RawData rawData = (RawData) o;
                         complex.setMimeType(rawData.getMimeType());
                         complex.setEncoding("base64");
@@ -358,10 +360,14 @@ public class ExecuteResponseBuilder {
      * Gets the mime type for the specified output
      * 
      * @param key
-     * @return
+     *
      */
     private String getOutputMimeType(String key) {
         // lookup for the OutputDefinitionType
+        if (request.getResponseForm() == null) {
+            return null;
+        }
+
         OutputDefinitionType odt = request.getResponseForm().getRawDataOutput();
         ResponseDocumentType responseDocument = request.getResponseForm().getResponseDocument();
         if (responseDocument != null && odt == null) {
@@ -387,7 +393,11 @@ public class ExecuteResponseBuilder {
         if (phase == ProcessState.DISMISSING) {
             return new WPSException("Process was cancelled by the administrator");
         } else {
-            return new WPSException("Process failed during execution", status.getException());
+            if (status.getException() instanceof WPSException) {
+                return (WPSException) status.getException();
+            } else {
+                return new WPSException("Process failed during execution", status.getException());
+            }
         }
     }
 

@@ -1,4 +1,4 @@
-/* (c) 2014 Open Source Geospatial Foundation - all rights reserved
+/* (c) 2014 - 2016 Open Source Geospatial Foundation - all rights reserved
  * (c) 2001 - 2013 OpenPlans
  * This code is licensed under the GPL 2.0 license, available at the root
  * application directory.
@@ -7,6 +7,7 @@ package org.geoserver.catalog.impl;
 
 import java.io.ObjectStreamException;
 import java.io.Serializable;
+import java.lang.reflect.InvocationHandler;
 import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Method;
 import java.lang.reflect.Proxy;
@@ -91,7 +92,7 @@ public class ModificationProxy implements WrappingProxy, Serializable {
         
         String property = null;
         if ( ( method.getName().startsWith( "get")  || method.getName().startsWith( "is" ) ) 
-                && method.getParameterTypes().length == 0 ) {
+                && method.getParameterCount() == 0 ) {
             //intercept getter to check the dirty property set
             property = method.getName().substring( 
                 method.getName().startsWith( "get") ? 3 : 2 );
@@ -144,6 +145,15 @@ public class ModificationProxy implements WrappingProxy, Serializable {
 
         try{
             Object result = method.invoke( proxyObject, args ); 
+            
+            // in case this is a live indirection, resolve it. Typically this means
+            // the reference is dangling, and we are going to avoid a wrapper around null
+            if (result instanceof Proxy && Proxy.getInvocationHandler(result) instanceof ResolvingProxy) {
+                ResolvingProxy rp = ProxyUtils.handler(result, ResolvingProxy.class);
+                // try to resolve, and return null if the reference is dangling
+                final Catalog catalog = (Catalog) GeoServerExtensions.bean("catalog");
+                result = rp.resolve(catalog, result);
+            }
 
             //intercept result and wrap it in a proxy if it is another Info object
             if ( result != null && shouldProxyProperty(result.getClass())) {
@@ -174,6 +184,7 @@ public class ModificationProxy implements WrappingProxy, Serializable {
         return properties();
     }
     
+    @SuppressWarnings("rawtypes")
     public void commit() {
         synchronized (proxyObject) {
             //commit changes to the proxy object
@@ -189,11 +200,19 @@ public class ModificationProxy implements WrappingProxy, Serializable {
                     if ( Collection.class.isAssignableFrom( g.getReturnType() ) ) {
                         Collection c = (Collection) g.invoke(proxyObject,null);
                         c.clear();
-                        c.addAll( (Collection) v );
+                        for (Object o : (Collection) v) {
+                            c.add(unwrap(o));
+                        }
                     } else if( Map.class.isAssignableFrom( g.getReturnType() )) {
+                        Map proxied = (Map) v;
                         Map m = (Map) g.invoke(proxyObject, null);
                         m.clear();
-                        m.putAll( (Map) v);
+                        for (Object key : proxied.keySet()) {
+                            Object uk = unwrap(key);
+                            final Object value = proxied.get(key);
+                            Object uv = unwrap(value);
+                            m.put(uk, uv);
+                        }
                     } else {
                         Method s = setter(p,g.getReturnType());
                         
@@ -219,8 +238,7 @@ public class ModificationProxy implements WrappingProxy, Serializable {
                             else {
                                 throw new IllegalStateException( "New info object set, but no setter for it.");
                             }
-                        }
-                        else {
+                        } else {
                             //call the setter
                             s.invoke( proxyObject, v );
                         }
@@ -529,7 +547,7 @@ public class ModificationProxy implements WrappingProxy, Serializable {
     /**
      * Gathers the most specific CatalogInfo sub-interface from the specified class object
      * @param class1
-     * @return
+     *
      */
     private Class getCatalogInfoInterface(Class<? extends CatalogInfo> clazz) {
         Class result = CatalogInfo.class;

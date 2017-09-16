@@ -1,4 +1,4 @@
-/* (c) 2014 Open Source Geospatial Foundation - all rights reserved
+/* (c) 2014 - 2015 Open Source Geospatial Foundation - all rights reserved
  * (c) 2001 - 2013 OpenPlans
  * This code is licensed under the GPL 2.0 license, available at the root
  * application directory.
@@ -34,6 +34,7 @@ import org.geoserver.catalog.DimensionPresentation;
 import org.geoserver.catalog.LayerInfo;
 import org.geoserver.catalog.MetadataLinkInfo;
 import org.geoserver.catalog.ResourceInfo;
+import org.geoserver.catalog.PublishedType;
 import org.geoserver.catalog.util.ReaderDimensionsAccessor;
 import org.geoserver.config.ResourceErrorHandling;
 import org.geoserver.ows.URLMangler.URLType;
@@ -53,6 +54,7 @@ import org.opengis.coverage.grid.GridEnvelope;
 import org.opengis.coverage.grid.GridGeometry;
 import org.opengis.referencing.FactoryException;
 import org.opengis.referencing.crs.CoordinateReferenceSystem;
+import org.vfny.geoserver.util.ResponseUtils;
 import org.vfny.geoserver.wcs.WcsException;
 import org.vfny.geoserver.wcs.WcsException.WcsExceptionCode;
 import org.xml.sax.ContentHandler;
@@ -184,7 +186,7 @@ public class Wcs10DescribeCoverageTransformer extends TransformerBase {
                     String coverageId = (String) it.next();
                     // check the coverage is known
                     LayerInfo layer = catalog.getLayerByName(coverageId);
-                    if (layer == null || layer.getType() != LayerInfo.Type.RASTER) {
+                    if (layer == null || layer.getType() != PublishedType.RASTER) {
                         throw new WcsException("Could not find the specified coverage: " + coverageId,
                                 WcsExceptionCode.InvalidParameterValue, "coverage");
                     }
@@ -247,7 +249,7 @@ public class Wcs10DescribeCoverageTransformer extends TransformerBase {
 
             if ((mdl.getContent() != null) && (mdl.getContent() != "")) {
                 attributes.addAttribute("", "xlink:href", "xlink:href", 
-                        "", mdl.getContent());
+                        "", ResponseUtils.proxifyMetadataLink(mdl, request.getBaseUrl()));
             }
 
             if (attributes.getLength() > 0) {
@@ -446,8 +448,7 @@ public class Wcs10DescribeCoverageTransformer extends TransformerBase {
          * 
          * @param ci
          * @param elevationMetadata 
-         * @throws Exception
-         */
+             */
         private void handleGrid(CoverageInfo ci) throws Exception {
         	final GridGeometry originalGrid = ci.getGrid();
         	final GridEnvelope gridRange=originalGrid.getGridRange();
@@ -609,8 +610,7 @@ public class Wcs10DescribeCoverageTransformer extends TransformerBase {
          * DOCUMENT ME!
          * 
          * @param ci
-         * @throws Exception
-         */
+             */
         private void handleSupportedCRSs(CoverageInfo ci) throws Exception {
             Set supportedCRSs = new LinkedHashSet();
             if (ci.getRequestSRS() != null)
@@ -639,8 +639,7 @@ public class Wcs10DescribeCoverageTransformer extends TransformerBase {
          * DOCUMENT ME!
          * 
          * @param ci
-         * @throws Exception
-         */
+             */
         private void handleSupportedFormats(CoverageInfo ci) throws Exception {
             final String nativeFormat = (((ci.getNativeFormat() != null) && ci.getNativeFormat()
                     .equalsIgnoreCase("GEOTIFF")) ? "GeoTIFF" : ci.getNativeFormat());

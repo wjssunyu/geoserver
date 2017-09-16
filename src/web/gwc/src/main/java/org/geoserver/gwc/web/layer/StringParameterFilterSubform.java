@@ -1,4 +1,4 @@
-/* (c) 2014 Open Source Geospatial Foundation - all rights reserved
+/* (c) 2014 - 2016 Open Source Geospatial Foundation - all rights reserved
  * (c) 2001 - 2013 OpenPlans
  * This code is licensed under the GPL 2.0 license, available at the root
  * application directory.
@@ -18,6 +18,7 @@ import org.apache.wicket.markup.html.form.TextField;
 import org.apache.wicket.model.IModel;
 import org.apache.wicket.model.PropertyModel;
 import org.apache.wicket.util.convert.IConverter;
+import org.geowebcache.filter.parameters.CaseNormalizer;
 import org.geowebcache.filter.parameters.StringParameterFilter;
 
 /**
@@ -28,16 +29,14 @@ import org.geowebcache.filter.parameters.StringParameterFilter;
 public class StringParameterFilterSubform extends 
     AbstractParameterFilterSubform<StringParameterFilter> {
 
+    private static final long serialVersionUID = -3815153551079914831L;
 
-    /** serialVersionUID */
-    private static final long serialVersionUID = 1L;
-    
-    private static final IConverter CONVERT = new IConverter() {
-        /** serialVersionUID */
-        private static final long serialVersionUID = 1L;
+    private static final IConverter<List<String>> CONVERT = new IConverter<List<String>>() {
+
+        private static final long serialVersionUID = -7486127358227242772L;
 
         @Override
-        public Object convertToObject(String value, Locale locale) {
+        public List<String> convertToObject(String value, Locale locale) {
             if(value==null) {
                 return null;
             } else {
@@ -47,10 +46,8 @@ public class StringParameterFilterSubform extends
         }
 
         @Override
-        public String convertToString(Object value, Locale locale) {
-            @SuppressWarnings("unchecked")
-            List<String> floats =  (List<String>) value;
-            Iterator<String> i = floats.iterator();
+        public String convertToString(List<String> value, Locale locale) {
+            Iterator<String> i = value.iterator();
             StringBuilder sb = new StringBuilder();
             if(i.hasNext()) {
                 sb.append(i.next());
@@ -63,6 +60,8 @@ public class StringParameterFilterSubform extends
         }
         
     };
+
+    private Component normalize;
 
     public StringParameterFilterSubform(String id,
             IModel<StringParameterFilter> model) {
@@ -78,12 +77,20 @@ public class StringParameterFilterSubform extends
             /** serialVersionUID */
             private static final long serialVersionUID = 1L;
 
-            @Override
-            public IConverter getConverter(Class<?> type) {
-                return CONVERT;
+            @SuppressWarnings("unchecked")
+			@Override
+            public <S> IConverter<S> getConverter(Class<S> type) {
+            	if (List.class.isAssignableFrom(type)) {
+            		return (IConverter<S>) CONVERT;
+            	}
+            	return super.getConverter(type);
             }
         };
+        values.setConvertEmptyInputStringToNull(false);
         add(values);
+        
+        normalize = new CaseNormalizerSubform("normalize", new PropertyModel<CaseNormalizer>(model, "normalize"));
+        add(normalize);
     }
 
 }

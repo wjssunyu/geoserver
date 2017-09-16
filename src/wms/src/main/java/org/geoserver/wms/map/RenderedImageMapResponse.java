@@ -1,9 +1,14 @@
-/* (c) 2014 Open Source Geospatial Foundation - all rights reserved
+/* (c) 2014-2015 Open Source Geospatial Foundation - all rights reserved
  * (c) 2001 - 2013 OpenPlans
  * This code is licensed under the GPL 2.0 license, available at the root
  * application directory.
  */
 package org.geoserver.wms.map;
+
+import it.geosolutions.jaiext.colorindexer.CachingColorIndexer;
+import it.geosolutions.jaiext.colorindexer.ColorIndexer;
+import it.geosolutions.jaiext.colorindexer.LRUColorIndexer;
+import it.geosolutions.jaiext.colorindexer.Quantizer;
 
 import java.awt.Transparency;
 import java.awt.image.IndexColorModel;
@@ -24,12 +29,7 @@ import org.geoserver.wms.kvp.PaletteManager;
 import org.geoserver.wms.map.PNGMapResponse.QuantizeMethod;
 import org.geotools.coverage.grid.GridCoverage2D;
 import org.geotools.image.ImageWorker;
-import org.geotools.image.palette.CachingColorIndexer;
-import org.geotools.image.palette.ColorIndexer;
-import org.geotools.image.palette.ColorIndexerDescriptor;
 import org.geotools.image.palette.InverseColorMapOp;
-import org.geotools.image.palette.LRUColorIndexer;
-import org.geotools.image.palette.Quantizer;
 import org.springframework.util.Assert;
 
 /**
@@ -143,7 +143,7 @@ public abstract class RenderedImageMapResponse extends AbstractMapResponse {
      * @param mapContent
      * @param palettedFormatName
      * @param supportsTranslucency If false the code will always apply the bitmask transformer
-     * @return
+     *
      */
     protected RenderedImage applyPalette(RenderedImage image, WMSMapContent mapContent,
             String palettedFormatName, boolean supportsTranslucency) {
@@ -185,7 +185,7 @@ public abstract class RenderedImageMapResponse extends AbstractMapResponse {
 
                 // if we have an indexer transform the image
                 if (indexer != null) {
-                    image = ColorIndexerDescriptor.create(image, indexer, null);
+                    image = new ImageWorker(image).colorIndex(indexer).getRenderedImage();
                 }
             }
         }
@@ -195,7 +195,7 @@ public abstract class RenderedImageMapResponse extends AbstractMapResponse {
     
     /**
      * @param originalImage
-     * @return
+     *
      */
     protected RenderedImage forceIndexed8Bitmask(RenderedImage originalImage,
             InverseColorMapOp paletteInverter) {
@@ -205,7 +205,7 @@ public abstract class RenderedImageMapResponse extends AbstractMapResponse {
     /**
      * Returns the capabilities for this output format 
      * @param outputFormat
-     * @return
+     *
      */
     public abstract MapProducerCapabilities getCapabilities(String outputFormat);
 }

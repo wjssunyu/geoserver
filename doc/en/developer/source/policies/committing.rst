@@ -8,21 +8,17 @@ Getting commit access
 
 All contributors are asked to provide an assignment agreement for working on the project:
 
-* `corporate_contributor.txt <http://www.osgeo.org/sites/osgeo.org/files/Page/corporate_contributor.txt>`_
-* `individual_contributor.txt <http://www.osgeo.org/sites/osgeo.org/files/Page/individual_contributor.txt>`_
+* `corporate_contributor.txt <http://www.osgeo.org/sites/osgeo.org/files/Page/corporate_contributor.txt>`__
+* `individual_contributor.txt <http://www.osgeo.org/sites/osgeo.org/files/Page/individual_contributor.txt>`__
 
-
-This agreement can be printed, signed, scanned and emailed to `info@osgeo.org <mailto:info@osgeo.org>`_ at Open Source Geospatial Foundation (OSGeo). `OSGeo <http://www.osgeo.org/content/foundation/about.html>`_
-is the  non-profit which holds the GeoServer codebase for the community.
+This agreement can be printed, signed, scanned and emailed to `info@osgeo.org <mailto:info@osgeo.org>`_ at Open Source Geospatial Foundation (OSGeo). `OSGeo <http://www.osgeo.org/content/foundation/about.html>`_ is the  non-profit which holds the GeoServer codebase for the community.
 
 The `contribution licenses <http://www.osgeo.org/content/foundation/legal/licenses.html>`_ are used by OSGeo projects seeking to assign copyright directly to the foundation. These licenses are directly derived from the Apache code contribution licenses (CLA V2.0 and CCLA v r190612).
    
 Community commit access
 ^^^^^^^^^^^^^^^^^^^^^^^
 
-The first stage of access allows a developer to commit only to the community
-module or extension for which they are the maintainer. This stage of access can
-be obtained quite easily.
+The first stage of access allows a developer to commit only to the community module or extension for which they are the maintainer. This stage of access can be obtained quite easily.
 
 The process of getting community commit access is as follows:
 
@@ -40,8 +36,8 @@ The process of getting community commit access is as follows:
 
 #. **Print, sign, scan and send the contributor agreement**
    
-   * `corporate_contributor.txt <http://www.osgeo.org/sites/osgeo.org/files/Page/corporate_contributor.tx>`_
-   * `individual_contributor.txt <http://www.osgeo.org/sites/osgeo.org/files/Page/individual_contributor.txt>`_
+   * `corporate_contributor.txt <http://www.osgeo.org/sites/osgeo.org/files/Page/corporate_contributor.txt>`_
+   * `individual_contributor.txt <http://www.osgeo.org/sites/osgeo.org/files/Page/individual_contributor.txt>`__
    
    Scanned assignment agreement can be emailed `info@osgeo.org <mailto:info@osgeo.org>`_ at OSGeo.
 
@@ -68,13 +64,13 @@ Being granted this stage of access takes time, and is obtained only after the
 developer has gained the trust of the other core committers.
 
 The process of obtaining core commit access is far less mechanical than the one
-to obtain community commit access. It is based soley on trust. To obtain core
+to obtain community commit access. It is based solely on trust. To obtain core
 commit access a developer must first obtain the trust of the other core
-commiters.
+committers.
 
 The way this is typically done is through continuous code review of patches.
 After a developer has submitted enough patches that have been met with a
-postitive response, and those patches require little modifications, the
+positive response, and those patches require little modifications, the
 developer will be nominated for core commit access.
 
 There is no magic number of patches that make the criteria, it is based mostly
@@ -93,21 +89,16 @@ in GeoServer. But over time some rules and conventions have emerged:
    When adding new source files to the repository remember to add the standard
    copyright header::
 
-      /* (c) 2014 Open Source Geospatial Foundation - all rights reserved
+      /* (c) 2016 Open Source Geospatial Foundation - all rights reserved
        * This code is licensed under the GPL 2.0 license, available at the root
        * application directory.
        */
 
-   When updating a file .. update the header::
+   When updating a file that does not have an existing header, add one (as above).
 
-      /* (c) 2013-2014 Open Source Geospatial Foundation - all rights reserved
-       * This code is licensed under the GPL 2.0 license, available at the root
-       * application directory.
-       */
-
-   When adding content from another organisation maintain copyright history and original license. Only add (c) OSGeo if you have made modifications to the file for GeoServer::
+   When adding content from another organisation maintain copyright history and original license. Only add Open Source Geospatial Foundation if you have made modifications to the file for GeoServer::
    
-      /* (c) 2014 Open Source Geospatial Foundation - all rights reserved
+      /* (c) 2016 Open Source Geospatial Foundation - all rights reserved
        * (c) 2014 OpenPlans
        * (c) 2008-2010 GeoSolutions
        * 

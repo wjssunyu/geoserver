@@ -39,18 +39,18 @@ master_doc = 'index'
 # General substitutions.
 project = u'GeoServer'
 manual = u'User Manual'
-copyright = u'2014, Open Source Geospatial Foundation'
+copyright = u'2017, Open Source Geospatial Foundation'
 
 # The default replacements for |version| and |release|, also used in various
 # other places throughout the built documents.
 #
 # The short X.Y version.
-version = '2.7'
+version = '2.12'
 # The full version, including alpha/beta/rc tags.
-release = '2.7-SNAPSHOT'
+release = '2.12-SNAPSHOT'
 # Users don't need to see the "SNAPSHOT" notation when it's there
 if release.find('SNAPSHOT') != -1:
-   release = '2.7.x'
+   release = '2.12.x'
 
 # There are two options for replacing |today|: either, you set today to some
 # non-false value, then it is used:
@@ -94,8 +94,10 @@ extlinks = {
     'website': ('http://geoserver.org/%s',''),
     'user': ('http://docs.geoserver.org/latest/en/user/%s',''),
     'developer': ('http://docs.geoserver.org/latest/en/developer/%s',''),
-    'geos': ('https://jira.codehaus.org/browse/GEOS-%s','GEOS-'),
-    'geot': ('https://jira.codehaus.org/browse/GEOT-%s','GEOT-')
+    'docguide': ('http://docs.geoserver.org/latest/en/docguide/%s',''),
+    'geos': ('https://osgeo-org.atlassian.net/browse/GEOS-%s','GEOS-'),
+    'geot': ('https://osgeo-org.atlassian.net/browse/GEOT-%s','GEOT-'),
+    'api': ('http://docs.geoserver.org/api/#/1.0.0/%s','')
 }
 
 # Common substitutions
@@ -137,7 +139,7 @@ html_title = project + " " + release + " " + manual
 # The name of an image file (within the static path) to use as favicon of the
 # docs.  This file should be a Windows icon file (.ico) being 16x16 or 32x32
 # pixels large.
-#html_favicon = None
+html_favicon = '../../themes/geoserver/static/geoserver.ico'
 
 # Add any paths that contain custom static files (such as style sheets) here,
 # relative to this directory. They are copied after the builtin static files,

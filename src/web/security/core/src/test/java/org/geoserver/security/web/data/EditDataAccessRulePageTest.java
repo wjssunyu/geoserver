@@ -1,4 +1,4 @@
-/* (c) 2014 Open Source Geospatial Foundation - all rights reserved
+/* (c) 2014 - 2016 Open Source Geospatial Foundation - all rights reserved
  * (c) 2001 - 2013 OpenPlans
  * This code is licensed under the GPL 2.0 license, available at the root
  * application directory.
@@ -31,7 +31,8 @@ public class EditDataAccessRulePageTest extends AbstractSecurityWicketTestSuppor
     @Before
     public void init() throws Exception {
         initializeForXML();
-        clearServices();
+        clearServices();        
+        DataAccessRuleDAO.get().clear();
     }
 
     @Test
@@ -40,8 +41,8 @@ public class EditDataAccessRulePageTest extends AbstractSecurityWicketTestSuppor
         tester.startPage(page=new EditDataAccessRulePage(getRule(ruleName)));        
         tester.assertRenderedPage(EditDataAccessRulePage.class);
 
-        tester.assertModelValue("form:workspace", MockData.CITE_PREFIX);
-        tester.assertModelValue("form:layer", MockData.LAKES.getLocalPart());
+        tester.assertModelValue("form:root", MockData.CITE_PREFIX);
+        tester.assertModelValue("form:layerContainer:layerAndLabel:layer", MockData.LAKES.getLocalPart());
         tester.assertModelValue("form:accessMode", AccessMode.WRITE);
         
         // Does not work with Palette
@@ -60,6 +61,7 @@ public class EditDataAccessRulePageTest extends AbstractSecurityWicketTestSuppor
         tester.assertRenderedPage(EditDataAccessRulePage.class);
 
         form=tester.newFormTester("form");        
+        form.setValue("roles:anyRole", true);
         form.submit("save");
         
         tester.assertErrorMessages(new String[0]);
@@ -111,6 +113,7 @@ public class EditDataAccessRulePageTest extends AbstractSecurityWicketTestSuppor
     }
 
     DataAccessRule getRule(String key) {
+        DataAccessRuleDAO.get().reload();
         for (DataAccessRule rule : DataAccessRuleDAO.get().getRules()) {
             if (key.equals(rule.getKey())) {
                 return rule;

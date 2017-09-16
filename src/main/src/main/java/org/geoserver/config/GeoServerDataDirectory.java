@@ -1,60 +1,34 @@
-/* (c) 2014 Open Source Geospatial Foundation - all rights reserved
+/* (c) 2014 - 2016 Open Source Geospatial Foundation - all rights reserved
  * (c) 2001 - 2013 OpenPlans
  * This code is licensed under the GPL 2.0 license, available at the root
  * application directory.
  */
 package org.geoserver.config;
 
-import java.io.File;
-import java.io.FileOutputStream;
-import java.io.IOException;
-import java.io.InputStream;
-import java.io.OutputStream;
-import java.net.MalformedURLException;
-import java.net.URI;
-import java.net.URISyntaxException;
-import java.net.URL;
-import java.net.URLConnection;
-import java.net.URLStreamHandler;
-import java.util.ArrayList;
-import java.util.List;
-import java.util.logging.Level;
-
-import javax.annotation.Nonnull;
-import javax.annotation.Nullable;
-
 import org.apache.commons.io.FileUtils;
-import org.apache.commons.io.IOUtils;
-import org.geoserver.catalog.CoverageInfo;
-import org.geoserver.catalog.CoverageStoreInfo;
-import org.geoserver.catalog.DataStoreInfo;
-import org.geoserver.catalog.FeatureTypeInfo;
-import org.geoserver.catalog.LayerGroupInfo;
-import org.geoserver.catalog.LayerInfo;
-import org.geoserver.catalog.NamespaceInfo;
-import org.geoserver.catalog.ResourceInfo;
-import org.geoserver.catalog.StoreInfo;
-import org.geoserver.catalog.StyleInfo;
-import org.geoserver.catalog.Styles;
-import org.geoserver.catalog.WMSLayerInfo;
-import org.geoserver.catalog.WMSStoreInfo;
-import org.geoserver.catalog.WorkspaceInfo;
+import org.geoserver.catalog.*;
+import org.geoserver.platform.GeoServerExtensions;
 import org.geoserver.platform.GeoServerResourceLoader;
-import org.geoserver.platform.resource.Files;
 import org.geoserver.platform.resource.Paths;
 import org.geoserver.platform.resource.Resource;
 import org.geoserver.platform.resource.Resource.Type;
-import org.geoserver.platform.resource.ResourceListener;
+import org.geoserver.util.EntityResolverProvider;
 import org.geoserver.platform.resource.ResourceStore;
 import org.geoserver.platform.resource.Resources;
 import org.geotools.data.DataUtilities;
-import org.geotools.styling.AbstractStyleVisitor;
-import org.geotools.styling.ChannelSelection;
-import org.geotools.styling.DefaultResourceLocator;
-import org.geotools.styling.ExternalGraphic;
-import org.geotools.styling.SelectedChannelType;
-import org.geotools.styling.Style;
-import org.geotools.styling.StyledLayerDescriptor;
+import org.geotools.styling.*;
+import org.xml.sax.EntityResolver;
+
+import javax.annotation.Nonnull;
+import java.io.File;
+import java.io.FileNotFoundException;
+import java.io.IOException;
+import java.io.InputStream;
+import java.net.MalformedURLException;
+import java.net.URL;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.logging.Level;
 
 /**
  * File or Resource access to GeoServer data directory. In addition to paths Catalog obhjects such as workspace or FeatureTypeInfo can be used to
@@ -83,12 +57,14 @@ import org.geotools.styling.StyledLayerDescriptor;
  * @author Justin Deoliveira, OpenGeo
  */
 @SuppressWarnings("unused")
-public class GeoServerDataDirectory implements ResourceStore {
+public class GeoServerDataDirectory {
 
     /**
      * resource loader
      */
     GeoServerResourceLoader resourceLoader;
+    
+    EntityResolverProvider entityResolverProvider;
 
     /**
      * Creates the data directory specifying the resource loader.
@@ -111,19 +87,8 @@ public class GeoServerDataDirectory implements ResourceStore {
         return resourceLoader;
     }
 
-    @Override
     public Resource get(String path) {
         return resourceLoader.get(path);
-    }
-
-    @Override
-    public boolean move(String path, String target) {
-        return resourceLoader.move(path, target);
-    }
-
-    @Override
-    public boolean remove(String path) {
-        return resourceLoader.remove(path);
     }
 
     /**
@@ -715,11 +680,11 @@ public class GeoServerDataDirectory implements ResourceStore {
     /**
      * Styles directory (using StyleInfo).
      * 
-     * Package visibility {@link GeoServerPersister#dir(StyleInfo).
+     * Package visibility {@link GeoServerPersister#dir(StyleInfo)}.
      * 
      * @param create Create if needed
      * @param styleInfo
-     * @return
+     *
      * @throws IOException
      * 
      * @deprecated As of GeoServer 2.6, replaced by {@link #get(StyleInfo, String...)}
@@ -792,9 +757,11 @@ public class GeoServerDataDirectory implements ResourceStore {
     static final String DATASTORE_XML = "datastore.xml";
     static final String COVERAGESTORE_XML = "coveragestore.xml";
     static final String WMSSTORE_XML = "wmsstore.xml";
+    static final String WMTSSTORE_XML = "wmtsstore.xml";
     static final String FEATURETYPE_XML = "featuretype.xml";
     static final String COVERAGE_XML = "coverage.xml";
     static final String WMSLAYER_XML = "wmslayer.xml";
+    static final String WMTSLAYER_XML = "wmtslayer.xml";
     static final String LAYER_XML = "layer.xml";
     static final String WORKSPACE_DIR = "workspaces";
     static final String LAYERGROUP_DIR = "layergroups";
@@ -848,13 +815,14 @@ public class GeoServerDataDirectory implements ResourceStore {
     /**
      * Retrieve a resource in the the workspace configuration directory. An empty path will retrieve
      * the directory itself.
+     * A null workspace will retrieve the resouce in the global configuration directory.
      * @param ws The workspace
      * @return A {@link Resource}
      */
     public @Nonnull Resource get(WorkspaceInfo ws, String... path) {
         Resource r;
         if(ws==null) {
-            return resourceLoader.get("");
+            r = get(Paths.path(path));
         } else {
             r = getWorkspaces(  ws.getName(), Paths.path(path));
         }
@@ -876,11 +844,17 @@ public class GeoServerDataDirectory implements ResourceStore {
     /**
      * Retrieve a resource in the the configuration directory of the workspace associated with a 
      * namespace.  An empty path will retrieve the directory itself.
-     * @param ws The namespace
+     * A null namespace will retrieve the resouce in the global configuration directory.
+     * @param ns The namespace
      * @return A {@link Resource}
      */
     public @Nonnull Resource get(NamespaceInfo ns, String... path) {
-        Resource r = getWorkspaces(ns.getPrefix(), Paths.path(path));
+        Resource r;
+        if(ns==null) {
+            r = get(Paths.path(path));
+        } else {
+            r = getWorkspaces(ns.getPrefix(), Paths.path(path));
+        }
         assert r!=null;
         return r;
     }
@@ -942,6 +916,17 @@ public class GeoServerDataDirectory implements ResourceStore {
     }
     
     /**
+     * Retrieve the WMTS store configuration XML as a Resource
+     * @param wmss The coverage store
+     * @return A {@link Resource}
+     */
+    public @Nonnull Resource config(WMTSStoreInfo wmss) {
+        Resource r = get(wmss, WMTSSTORE_XML);
+        assert r!=null;
+        return r;
+    }
+    
+    /**
      * Retrieve the WMS store configuration XML as a Resource
      * @param wmss The coverage store
      * @return A {@link Resource}
@@ -952,12 +937,14 @@ public class GeoServerDataDirectory implements ResourceStore {
             r=config((DataStoreInfo) si);
         } else if(si instanceof CoverageStoreInfo) {
             r=config((CoverageStoreInfo) si);
+        } else if(si instanceof WMTSStoreInfo) {
+            r=config((WMTSStoreInfo) si);
         } else if(si instanceof WMSStoreInfo) {
             r=config((WMSStoreInfo) si);
         } else {
             // It'd be nice if we could be generic and cover potential future StoreInfo types.
             throw new IllegalArgumentException(
-                    "Only DataStoreInfo, CoverageStoreInfo, and WMSStoreInfo are supported.");
+                    "Only DataStoreInfo, CoverageStoreInfo, and WMS/WMTSStoreInfo are supported.");
         }
         assert r!=null;
         return r;
@@ -974,12 +961,14 @@ public class GeoServerDataDirectory implements ResourceStore {
             r=config((FeatureTypeInfo) si);
         } else if(si instanceof CoverageInfo) {
             r=config((CoverageInfo) si);
+        } else if(si instanceof WMTSLayerInfo) {
+            r=config((WMTSLayerInfo) si);
         } else if(si instanceof WMSLayerInfo) {
             r=config((WMSLayerInfo) si);
         } else {
             // It'd be nice if we could be generic and cover potential future ResourceInfo types.
             throw new IllegalArgumentException(
-                    "Only FeatureTypeInfo, CoverageInfo, and WMSLayerInfo are supported.");
+                    "Only FeatureTypeInfo, CoverageInfo, and WMS/WMTSLayerInfo are supported.");
         }
         assert r!=null;
         return r;
@@ -1031,6 +1020,17 @@ public class GeoServerDataDirectory implements ResourceStore {
     }
     
     /**
+     * Retrieve the WMS layer configuration XML as a Resource
+     * @param wmsl The feature type
+     * @return A {@link Resource}
+     */
+    public @Nonnull Resource config(WMTSLayerInfo wmsl) {
+        Resource r = get(wmsl, WMTSLAYER_XML);
+        assert r!=null;
+        return r;
+    }
+    
+    /**
      * Retrieve a resource in the the configuration directory of a Layer.  An empty path will 
      * retrieve the directory itself.
      * @param li The store
@@ -1039,18 +1039,19 @@ public class GeoServerDataDirectory implements ResourceStore {
     public @Nonnull Resource get(LayerInfo l, String... path ) {
         final Resource r;
         if ( l.getResource() instanceof FeatureTypeInfo) {
-            r = get( (FeatureTypeInfo) l.getResource(), path );
+            r = get( l.getResource(), path );
         }
         else if ( l.getResource() instanceof CoverageInfo ) {
-            r = get( (CoverageInfo) l.getResource(), path );
-        }
-        else if ( l.getResource() instanceof WMSLayerInfo ) {
-            r = get( (WMSLayerInfo) l.getResource(), path );
+            r = get( l.getResource(), path );
+        } else if ( l.getResource() instanceof WMTSLayerInfo ) {
+            r = get( l.getResource(), path );
+        } else if ( l.getResource() instanceof WMSLayerInfo ) {
+            r = get( l.getResource(), path );
         }
         else {
             // It'd be nice if we could be generic and cover potential future ResourceInfo types.
             throw new IllegalArgumentException(
-                    "Only FeatureTypeInfo, CoverageInfo, and WMSLayerInfo are supported.");
+                    "Only FeatureTypeInfo, CoverageInfo, and WMS/WMTSLayerInfo are supported.");
         }
         assert r!=null;
         return r;
@@ -1073,7 +1074,7 @@ public class GeoServerDataDirectory implements ResourceStore {
      * @return A {@link Resource}
      */
     public @Nonnull Resource getLayerGroups(String... path) {
-        Resource r = get(  Paths.path( LAYERGROUP_DIR, Paths.path(path)));
+        Resource r = getLayerGroups(null, path);
         assert r!=null;
         return r;
     }
@@ -1081,6 +1082,7 @@ public class GeoServerDataDirectory implements ResourceStore {
     /**
      * Retrieve a resource in the the layer groups directory of a workspace. An empty path will retrieve
      * the directory itself.
+     * A null workspace will return the resource in the global layer groups directory
      * @return A {@link Resource}
      */
     public @Nonnull Resource getLayerGroups(WorkspaceInfo wsi, String... path) {
@@ -1097,12 +1099,7 @@ public class GeoServerDataDirectory implements ResourceStore {
      */
     public @Nonnull Resource get(LayerGroupInfo lgi, String... path) {
         WorkspaceInfo wsi = lgi.getWorkspace();
-        final Resource r;
-        if(wsi==null) {
-            r = getLayerGroups(path);
-        } else {
-            r = getLayerGroups(wsi, path);
-        }
+        Resource r = getLayerGroups(wsi, path);
         assert r!=null;
         return r;
     }
@@ -1125,7 +1122,7 @@ public class GeoServerDataDirectory implements ResourceStore {
      * @return A {@link Resource}
      */
     public @Nonnull Resource getStyles(String... path) {
-        Resource r = get(  Paths.path( STYLE_DIR, Paths.path(path)));
+        Resource r = getStyles(null, path);
         assert r!=null;
         return r;
     }
@@ -1133,6 +1130,7 @@ public class GeoServerDataDirectory implements ResourceStore {
     /**
      * Retrieve a resource in the the styles directory of a workspace. An empty path will retrieve
      * the directory itself.
+     * A null workspace will return the resource in the global styles directory
      * @return A {@link Resource}
      */
     public @Nonnull Resource getStyles(WorkspaceInfo wsi, String... path) {
@@ -1149,12 +1147,7 @@ public class GeoServerDataDirectory implements ResourceStore {
      */
     public @Nonnull Resource get(StyleInfo si, String... path) {
         WorkspaceInfo workspace = si != null ? si.getWorkspace() : null;
-        final Resource r;
-        if (workspace == null) {
-            r = getStyles(path);
-        } else {
-            r = getStyles(workspace, path);
-        }
+        final Resource r = getStyles(workspace, path);
         assert r!=null;
         return r;
     }
@@ -1206,25 +1199,25 @@ public class GeoServerDataDirectory implements ResourceStore {
     protected @Nonnull Style parsedStyleResources(StyleInfo s) throws IOException {
         final Resource styleResource = style(s);
         if ( styleResource.getType() == Type.UNDEFINED ){
-            throw new IOException( "No such resource: " + s.getFilename());
+            throw new FileNotFoundException( "No such resource: " + s.getFilename());
         }
         final DefaultResourceLocator locator = new DefaultResourceLocator();
-        locator.setSourceUrl(resourceToUrl(styleResource));
+        locator.setSourceUrl(Resources.toURL(styleResource));
         StyledLayerDescriptor sld =
             Styles.handler(s.getFormat()).parse(styleResource, s.getFormatVersion(), locator, null);
         final Style style = Styles.style(sld);
         assert style!=null;
         return style;
     }
-    
+
     /**
-     * Retrieve the style prepared for direct GeoTools use. All file references
+     * Retrieve the styled layer descriptor prepared for direct GeoTools use. All file references
      * have been made absolute.
-     * 
+     *
      * @param s The style
-     * @return A {@link Resource}
+     * @return A {@link StyledLayerDescriptor}
      */
-    public @Nonnull Style parsedStyle(final StyleInfo s) throws IOException {
+    public @Nonnull StyledLayerDescriptor parsedSld(final StyleInfo s) throws IOException {
         final Resource styleResource = style(s);
         if ( styleResource.getType() == Type.UNDEFINED ){
             throw new IOException( "No such resource: " + s.getFilename());
@@ -1232,27 +1225,92 @@ public class GeoServerDataDirectory implements ResourceStore {
         File input = styleResource.file();
 
         DefaultResourceLocator locator = new DefaultResourceLocator() {
-            
+
             @Override
             public URL locateResource(String uri) {
                 URL url = super.locateResource(uri);
-                if(url.getProtocol().equalsIgnoreCase("resource")) {
-                    return fileToUrlPreservingCqlTemplates(urlToResource(url).file());
+                if(url != null && url.getProtocol().equalsIgnoreCase("resource")) {
+                    Resource resource = resourceLoader.fromURL(url);
+                    File file;
+                    if (Resources.exists(resource)) {
+                        //GEOS-7741: cache resource as file, otherwise it can't be found
+                        file = resource.file();
+                    } else {
+                        //GEOS-7025: Just get the path; don't try to create the file
+                        file = Paths.toFile(root(), resource.path());
+                    }
+
+                    URL u = fileToUrlPreservingCqlTemplates(file);
+
+                    if (url.getQuery() != null) {
+                        try {
+                            u = new URL(u.toString() + "?" + url.getQuery());
+                        } catch (MalformedURLException ex) {
+                            GeoServerPersister.LOGGER.log(Level.WARNING, "Error processing query string for resource with uri: " + uri, ex);
+                            return null;
+                        }
+                    }
+
+                    if (url.getRef() != null) {
+                        try {
+                            u = new URL(u.toString() + "#" + url.getRef());
+                        } catch (MalformedURLException ex) {
+                            GeoServerPersister.LOGGER.log(Level.WARNING, "Error processing # fragment for resource with uri: " + uri, ex);
+                            return null;
+                        }
+                    }
+
+                    return u;
                 } else {
                     return url;
                 }
             }
-            
+
+            @Override
+            protected URL validateRelativeURL(URL relativeUrl) {
+                // the resource:/ thing does not make for a valid url, so don't validate it
+                if (relativeUrl.getProtocol().equalsIgnoreCase("resource")) {
+                    return relativeUrl;
+                } else {
+                    return super.validateRelativeURL(relativeUrl);
+                }
+            }
+
         };
-        locator.setSourceUrl(resourceToUrl(styleResource));
+        locator.setSourceUrl(Resources.toURL(styleResource));
+        EntityResolver entityResolver = getEntityResolver();
         final StyledLayerDescriptor sld =
-            Styles.handler(s.getFormat()).parse(input, s.getFormatVersion(), locator, null);
+                Styles.handler(s.getFormat()).parse(input, s.getFormatVersion(), locator, getEntityResolver());
+
+        return sld;
+    }
+
+    /**
+     * Retrieve the style prepared for direct GeoTools use. All file references
+     * have been made absolute.
+     * 
+     * @param s The style
+     * @return A {@link Style}
+     */
+    public @Nonnull Style parsedStyle(final StyleInfo s) throws IOException {
+        final StyledLayerDescriptor sld = parsedSld(s);
         final Style style = Styles.style(sld);
-        
         assert style!=null;
         return style;
     }
     
+    private EntityResolver getEntityResolver() {
+        // would be best injected, but apparently most of the code is
+        // actually creating a GeoServerDataDirectory object programmatically and/or on the fly, so
+        // we have to resort to a dynamic spring context lookup instead
+        EntityResolver resolver = null;
+        EntityResolverProvider provider = GeoServerExtensions.bean(EntityResolverProvider.class);
+        if(provider != null) {
+            resolver = provider.getEntityResolver();
+        }
+        return resolver;
+    }
+
     /**
      * Retrieve the settings configuration XML as a Resource
      * @param s The settings
@@ -1326,7 +1384,7 @@ public class GeoServerDataDirectory implements ResourceStore {
                         return;
                     }
                     try {
-                        Resource r = urlToResource(exgr.getLocation());
+                        Resource r = resourceLoader.fromURL(exgr.getLocation());
                         
                         if (r!=null && r.getType()!=Type.UNDEFINED){
                             resources.add(r);
@@ -1350,76 +1408,18 @@ public class GeoServerDataDirectory implements ResourceStore {
                 
             });
         }
+        catch(FileNotFoundException e){
+            GeoServerPersister.LOGGER.log(Level.WARNING, "Error loading style:"+ e);
+        }
         catch(IOException e) {
             GeoServerPersister.LOGGER.log(Level.WARNING, "Error loading style", e);
         }
         return resources;
     }
 
-    URL resourceToUrl(final Resource res) {
-        try {
-            return new URL("resource", null, -1, String.format(res.getType()==Type.DIRECTORY?"/%s/":"/%s", res.path()),
-                new URLStreamHandler(){
-
-                @Override
-                protected URLConnection openConnection(URL u)
-                        throws IOException {
-                    return new URLConnection(u){
-
-                        @Override
-                        public void connect() throws IOException {
-                            // TODO Auto-generated method stub
-                            
-                        }
-
-                        @Override
-                        public long getLastModified() {
-                            return res.lastmodified();
-                        }
-
-                        @Override
-                        public InputStream getInputStream() throws IOException {
-                            return res.in();
-                        }
-
-                        @Override
-                        public OutputStream getOutputStream() throws IOException {
-                            return res.out();
-                        }
-                    };
-                }
-                
-            });
-        } catch (MalformedURLException e) {
-            throw new IllegalStateException("Should not happen",e);
-            //LOGGER.log(Level.FINER, e.getMessage(), e);
-        }
-    }
-    
-    @Nullable Resource urlToResource(URL url) {
-        if(url.getProtocol().equalsIgnoreCase("resource")) {
-            return get(url.getPath());
-        } else if (url.getProtocol().equalsIgnoreCase("file")){
-            return Files.asResource(DataUtilities.urlToFile(url));
-        } else {
-            return null;
-        }
-    }
-    Resource uriToResource(Resource base, URI uri) throws MalformedURLException {
-        if(uri.getScheme()!=null && !uri.getScheme().equals("file")) {
-            return null;
-        }
-        if(uri.isAbsolute() && ! uri.isOpaque()) {
-            assert uri.getScheme().equals("file");
-            return Files.asResource(new File(uri.toURL().getFile()));
-        }  else {
-            return base.get(uri.normalize().getSchemeSpecificPart());
-        }
-    }
-
     /**
      * Wrapper for {@link DataUtilities#fileToURL} that unescapes braces used to delimit CQL templates.
-     */
+     */ 
     public static URL fileToUrlPreservingCqlTemplates(File file) {
         URL url = DataUtilities.fileToURL(file);
         if (!file.getPath().contains("${")) {
@@ -1434,4 +1434,7 @@ public class GeoServerDataDirectory implements ResourceStore {
         }
     }
 
+    public ResourceStore getResourceStore() {
+        return resourceLoader.getResourceStore();
+    }
 }

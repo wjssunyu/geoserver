@@ -1,17 +1,21 @@
-/* (c) 2014 Open Source Geospatial Foundation - all rights reserved
+/* (c) 2014 - 2016 Open Source Geospatial Foundation - all rights reserved
  * (c) 2001 - 2013 OpenPlans
  * This code is licensed under the GPL 2.0 license, available at the root
  * application directory.
  */
 package org.geoserver.wfs.v2_0;
 
-import static org.junit.Assert.assertFalse;
-import static org.junit.Assert.assertTrue;
+import static org.hamcrest.CoreMatchers.is;
 import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertNotNull;
+import static org.junit.Assert.assertThat;
+import static org.junit.Assert.assertTrue;
 
 import java.net.URLEncoder;
 import java.util.Collections;
+import java.util.concurrent.ExecutorCompletionService;
+import java.util.concurrent.Executors;
 
 import javax.xml.namespace.QName;
 
@@ -27,12 +31,10 @@ import org.geotools.gml3.v3_2.GML;
 import org.geotools.wfs.v2_0.WFS;
 import org.junit.Before;
 import org.junit.Test;
-import org.opengis.feature.type.FeatureType;
+import org.springframework.mock.web.MockHttpServletResponse;
 import org.w3c.dom.Document;
 import org.w3c.dom.Element;
 import org.w3c.dom.NodeList;
-
-import com.mockrunner.mock.web.MockHttpServletResponse;
 
 public class GetFeatureTest extends WFS20TestSupport {
 
@@ -58,6 +60,13 @@ public class GetFeatureTest extends WFS20TestSupport {
 
         Document dom = getAsDOM("wfs?request=GetFeature&typenames=cdf:Fifteen&version=2.0.0&service=wfs");
         assertEquals("unknown", dom.getDocumentElement().getAttribute("numberMatched"));
+        assertEquals("15", dom.getDocumentElement().getAttribute("numberReturned"));
+        XMLAssert.assertXpathEvaluatesTo("15", "count(//cdf:Fifteen)", dom);
+
+        dom = getAsDOM("wfs?request=GetFeature&typenames=cdf:Fifteen&version=2.0.0&service=wfs&resultType=hits");
+        assertEquals("15", dom.getDocumentElement().getAttribute("numberMatched"));
+        assertEquals("0", dom.getDocumentElement().getAttribute("numberReturned"));
+        XMLAssert.assertXpathEvaluatesTo("0", "count(//cdf:Fifteen)", dom);
 
         fti.setSkipNumberMatched(false);
         this.getCatalog().save(fti);
@@ -67,6 +76,46 @@ public class GetFeatureTest extends WFS20TestSupport {
     public void testGet() throws Exception {
     	testGetFifteenAll("wfs?request=GetFeature&typenames=cdf:Fifteen&version=2.0.0&service=wfs");
     	testGetFifteenAll("wfs?request=GetFeature&typenames=(cdf:Fifteen)&version=2.0.0&service=wfs");
+    }
+    
+    @Test
+    public void testConcurrentGet() throws Exception {
+        ExecutorCompletionService<Object> es = new ExecutorCompletionService<>(Executors.newFixedThreadPool(Runtime.getRuntime().availableProcessors()));
+        final int REQUESTS =  200;
+        for (int i = 0; i < REQUESTS; i++) {
+            es.submit(() -> {
+                testGetFifteenAll("wfs?request=GetFeature&typenames=cdf:Fifteen&version=2.0.0&service=wfs");
+                return null;
+            });
+        }
+        // just check there are no exceptions
+        for (int i = 0; i < REQUESTS; i++) {
+            es.take().get();
+        }
+        
+    }
+    
+    @Test
+    public void testConcurrentPost() throws Exception {
+        ExecutorCompletionService<Object> es = new ExecutorCompletionService<>(Executors.newFixedThreadPool(Runtime.getRuntime().availableProcessors()));
+        final int REQUESTS =  200;
+        for (int i = 0; i < REQUESTS; i++) {
+            es.submit(() -> {
+                testPost();
+                return null;
+            });
+        }
+        // just check there are no exceptions
+        long start = System.currentTimeMillis();
+        for (int i = 0; i < REQUESTS; i++) {
+            es.take().get();
+            if(i % 100 == 0) {
+                long curr = System.currentTimeMillis();
+                LOGGER.info(i + " - " + (curr - start));
+                start = curr;
+            }
+        }
+        
     }
 
     @Test
@@ -990,6 +1039,100 @@ public class GetFeatureTest extends WFS20TestSupport {
         Document dom = postAsDOM("wfs", xml);
 
         XMLAssert.assertXpathEvaluatesTo("OperationParsingFailed", "//ows:Exception/@exceptionCode", dom);
+    }
+
+    @Test
+    public void testWfs11AndGML32() throws Exception {
+        Document doc = getAsDOM("wfs?request=GetFeature&typeName=cdf:Fifteen&version=1.1.0&service=wfs&featureid=Fifteen.2&outputFormat=gml32");
+        // print(doc);
+        assertGML32(doc);
+
+        XMLAssert.assertXpathEvaluatesTo("1",
+                "count(//wfs:FeatureCollection/wfs:member/cdf:Fifteen)", doc);
+        XMLAssert.assertXpathEvaluatesTo("Fifteen.2",
+                "//wfs:FeatureCollection/wfs:member/cdf:Fifteen/@gml:id", doc);
+    }
+
+    @Test
+    public void testGml32MimeType() throws Exception {
+        // test GET request
+        String url = "wfs?request=GetFeature&typeName=cdf:Fifteen&version=2.0" +
+                "&service=wfs&featureid=Fifteen.2&outputFormat=gml32";
+        MockHttpServletResponse response = getAsServletResponse(url);
+        assertThat(response.getContentType(), is("application/gml+xml; version=3.2"));
+        // override GML 3.2 MIME type with text / xml
+        setGmlMimeTypeOverride("text/xml");
+        response =  getAsServletResponse(url);
+        assertThat(response.getContentType(), is("text/xml"));
+        setGmlMimeTypeOverride(null);
+        // test POST request
+        String xml = "<wfs:GetFeature service='WFS' version='2.0.0'" +
+                "                xmlns:cdf='http://www.opengis.net/cite/data'" +
+                "                xmlns:wfs='http://www.opengis.net/wfs/2.0'>" +
+                "    <wfs:Query typeNames='cdf:Other'>" +
+                "        <wfs:PropertyName>cdf:string2</wfs:PropertyName>" +
+                "    </wfs:Query>" +
+                "</wfs:GetFeature>";
+        response = postAsServletResponse("wfs", xml);
+        assertThat(response.getContentType(), is("application/gml+xml; version=3.2"));
+        // override GML 3.2 MIME type with text / xml
+        setGmlMimeTypeOverride("text/xml");
+        response =  postAsServletResponse("wfs", xml);
+        assertThat(response.getContentType(), is("text/xml"));
+    }
+
+    /**
+     * Check that a Filter 2.0 {@code fes:PropertyIsLike} returns the expected number of Buildings for a given {@code matchCase}.
+     * 
+     * @param matchCase value of {@code matchCase} filter attribute or {@code null} if none
+     * @param expectedBuildings
+     */
+    private void checkPropertyIsLikeMatchCase(Boolean matchCase, int expectedBuildings)
+            throws Exception {
+        // @formatter:off
+        String xml 
+            = "<wfs:GetFeature service=\"WFS\" version=\"2.0.0\" "
+            + "        xmlns:wfs=\"http://www.opengis.net/wfs/2.0\" "
+            + "        xmlns:fes=\"http://www.opengis.net/fes/2.0\" "
+            + "        xmlns:cite=\"http://www.opengis.net/cite\">"
+            + "    <wfs:Query typeNames=\"cite:Buildings\">"
+            + "        <fes:Filter>"
+            + "            <fes:PropertyIsLike wildCard=\"*\" singleChar=\"%\" escapeChar=\"!\""
+            + (matchCase == null ? "" : " matchCase=\"" + matchCase + "\"") + ">"
+            + "                <fes:ValueReference>cite:ADDRESS</fes:ValueReference>"
+            + "                <fes:Literal>* MAIN STREET</fes:Literal>"
+            + "            </fes:PropertyIsLike>"
+            + "        </fes:Filter>"
+            + "    </wfs:Query>"
+            + "</wfs:GetFeature>";
+        // @formatter:on
+        Document doc = postAsDOM("wfs", xml);
+        assertEquals("wfs:FeatureCollection", doc.getDocumentElement().getNodeName());
+        assertEquals(expectedBuildings, doc.getElementsByTagName("cite:Buildings").getLength());
+    }
+
+    /**
+     * Test that a Filter 2.0 {@code fes:PropertyIsLike} without {@code matchCase} matches zero Buildings.
+     */
+    @Test
+    public void testPropertyIsLikeWithoutMatchCase() throws Exception {
+        checkPropertyIsLikeMatchCase(null, 0);
+    }
+
+    /**
+     * Test that a Filter 2.0 {@code fes:PropertyIsLike} with {@code matchCase="true"} matches zero Buildings.
+     */
+    @Test
+    public void testPropertyIsLikeMatchCaseTrue() throws Exception {
+        checkPropertyIsLikeMatchCase(true, 0);
+    }
+
+    /**
+     * Test that a Filter 2.0 {@code fes:PropertyIsLike} with {@code matchCase="false"} matches two Buildings.
+     */
+    @Test
+    public void testPropertyIsLikeMatchCaseFalse() throws Exception {
+        checkPropertyIsLikeMatchCase(false, 2);
     }
 
 }

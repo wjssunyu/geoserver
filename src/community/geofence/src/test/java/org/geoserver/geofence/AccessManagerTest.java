@@ -1,25 +1,37 @@
+/* (c) 2013-2016 Open Source Geospatial Foundation - all rights reserved
+ * This code is licensed under the GPL 2.0 license, available at the root
+ * application directory.
+ */
 package org.geoserver.geofence;
 
-import java.util.Arrays;
+import java.util.*;
 
-import org.geoserver.catalog.Catalog;
-import org.geoserver.catalog.LayerInfo;
-import org.geoserver.catalog.WorkspaceInfo;
+import org.springframework.mock.web.MockHttpServletRequest;
+import org.geoserver.catalog.*;
+import org.geoserver.catalog.impl.*;
 import org.geoserver.data.test.MockData;
 import org.geoserver.ows.Dispatcher;
 import org.geoserver.ows.Request;
 import org.geoserver.security.VectorAccessLimits;
 import org.geoserver.security.WorkspaceAccessLimits;
+import org.geoserver.wms.GetMapRequest;
+import org.geoserver.wms.MapLayerInfo;
 import org.geotools.factory.CommonFactoryFinder;
 import org.opengis.filter.Filter;
 import org.opengis.filter.FilterFactory2;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
+import org.springframework.security.core.Authentication;
 import org.springframework.security.core.GrantedAuthority;
 import org.springframework.security.core.authority.SimpleGrantedAuthority;
 
 import com.vividsolutions.jts.geom.Geometry;
 import com.vividsolutions.jts.io.WKTReader;
+
 import org.junit.Test;
+import org.springframework.security.core.context.SecurityContextHolder;
+import org.springframework.web.context.request.RequestContextHolder;
+import org.springframework.web.context.request.RequestContextListener;
+import org.springframework.web.context.request.ServletRequestAttributes;
 
 
 public class AccessManagerTest extends GeofenceBaseTest
@@ -209,4 +221,80 @@ public class AccessManagerTest extends GeofenceBaseTest
 
     }
    
+    
+    /**
+     * This test is very similar to testAreaLimited(), but the source resource is set to have the 900913 SRS.
+     * We expect that the allowedarea is projected into the resource CRS.
+     *
+     */
+    public void testArea900913() throws Exception
+    {
+        UsernamePasswordAuthenticationToken user = new UsernamePasswordAuthenticationToken(
+                "area", "area");
+
+        LayerInfo generic = getCatalog().getLayerByName(getLayerId(MockData.GENERICENTITY));
+
+        // Create a layer using as much as info from the Mock instance, making sure we're declaring the 900913 SRS.
+        WorkspaceInfoImpl ws = new WorkspaceInfoImpl();
+        ws.setName(generic.getResource().getStore().getWorkspace().getName());
+
+        StoreInfo store = new DataStoreInfoImpl(getCatalog());
+        store.setWorkspace(ws);
+
+        FeatureTypeInfoImpl resource = new FeatureTypeInfoImpl(getCatalog());
+        resource.setNamespace(generic.getResource().getNamespace());
+        resource.setSRS("EPSG:900913");
+        resource.setName(generic.getResource().getName());
+        resource.setStore(store);
+
+        LayerInfoImpl layerInfo = new LayerInfoImpl();
+        layerInfo.setResource(resource);
+        layerInfo.setName(generic.getName());
+
+        // Check we have the geometry filter set
+        VectorAccessLimits vl = (VectorAccessLimits) accessManager.getAccessLimits(user, resource);
+
+        FilterFactory2 ff = CommonFactoryFinder.getFilterFactory2(null);
+        Geometry limit = new WKTReader().read(" MULTIPOLYGON (((5343335.558077131 8859142.800565697, 5343335.558077131 9100250.907059547, 5454655.048870404 9100250.907059547, 5454655.048870404 8859142.800565697, 5343335.558077131 8859142.800565697)))");
+        Filter filter = ff.intersects(ff.property(""), ff.literal(limit));
+
+        assertEquals(filter, vl.getReadFilter());
+        assertEquals(filter, vl.getWriteFilter());
+    }
+
+    @Test
+    public void testWmsGetMapRequestWithLayerGroupAndNormalLayerAndStyles() {
+        MockHttpServletRequest request = new MockHttpServletRequest();
+        RequestContextHolder.setRequestAttributes(new ServletRequestAttributes(request));
+        List<PublishedInfo> layers = new ArrayList<>();
+        layers.add(getCatalog().getLayerByName("Buildings"));
+        layers.add(getCatalog().getLayerByName("DividedRoutes"));
+        List<StyleInfo> styles = new ArrayList<>();
+        styles.add(getCatalog().getLayerByName("Buildings").getDefaultStyle());
+        styles.add(getCatalog().getLayerByName("DividedRoutes").getDefaultStyle());
+        LayerGroupInfoImpl layerGroup = new LayerGroupInfoImpl();
+        layerGroup.setName("layer_group");
+        layerGroup.setLayers(layers);
+        layerGroup.setStyles(styles);
+        getCatalog().add(layerGroup);
+        Map kvp = new HashMap<>();
+        kvp.put("LAYERS", "layer_group,Bridges");
+        kvp.put("layers", "layer_group,Bridges");
+        kvp.put("STYLES", ",lines");
+        Request gsRequest = new Request();
+        gsRequest.setKvp(kvp);
+        gsRequest.setRawKvp(kvp);
+        String service = "WMS";
+        String requestName = "GetMap";
+        Authentication user = new UsernamePasswordAuthenticationToken("admin", "geoserver", Arrays.asList(
+                new GrantedAuthority[] { new SimpleGrantedAuthority("ROLE_ADMINISTRATOR") } ));
+        SecurityContextHolder.getContext().setAuthentication(user);
+        List<MapLayerInfo> mapLayersInfos = new ArrayList<>();
+        mapLayersInfos.add(new MapLayerInfo(getCatalog().getLayerByName("Buildings")));
+        mapLayersInfos.add(new MapLayerInfo(getCatalog().getLayerByName("DividedRoutes")));
+        mapLayersInfos.add(new MapLayerInfo(getCatalog().getLayerByName("Bridges")));
+        GetMapRequest getMap = new GetMapRequest();
+        getMap.setLayers(mapLayersInfos);
+        accessManager.overrideGetMapRequest(gsRequest, service, requestName, user, getMap);
+    }
 }

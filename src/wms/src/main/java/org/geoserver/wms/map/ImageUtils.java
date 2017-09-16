@@ -1,4 +1,4 @@
-/* (c) 2014 Open Source Geospatial Foundation - all rights reserved
+/* (c) 2014 - 2016 Open Source Geospatial Foundation - all rights reserved
  * (c) 2001 - 2013 OpenPlans
  * This code is licensed under the GPL 2.0 license, available at the root
  * application directory.
@@ -58,14 +58,13 @@ public class ImageUtils {
 	        final File tempDir = new File(GeoServerExtensions.getProperty("user.home"),".geoserver");
 	        if (!tempDir.exists() ) {
 	            if(!tempDir.mkdir())
-	            System.out
-	                    .println("Unable to create debug dir, exiting application!!!");
+	            LOGGER.severe("Unable to create debug dir, exiting application!!!");
 	            DEBUG=false;
 	            DEBUG_DIR = null;
 	        } else
 	           {
 	                    DEBUG_DIR = tempDir.getAbsolutePath();
-	                     System.out.println("MetatileMapOutputFormat debug dir "+DEBUG_DIR);
+	                     LOGGER.fine("MetatileMapOutputFormat debug dir "+DEBUG_DIR);
 	           }
 	    }
 	
@@ -97,14 +96,14 @@ public class ImageUtils {
      *         image or not depending on the <code>transparent</code>
      *         parameter.
      */
-    public static BufferedImage createImage(final int width, final int height,
+    public static BufferedImage createImage(final int width, int height,
             final IndexColorModel palette, final boolean transparent) {
         // WARNING: whenever this method is changed, change getDrawingSurfaceMemoryUse
         // accordingly
         if (palette != null) {
             // unfortunately we can't use packed rasters because line rendering
             // gets completely
-            // broken, see GEOS-1312 (http://jira.codehaus.org/browse/GEOS-1312)
+            // broken, see GEOS-1312 (https://osgeo-org.atlassian.net/browse/GEOS-1312)
             // final WritableRaster raster =
             // palette.createCompatibleWritableRaster(width, height);
             final WritableRaster raster = Raster.createInterleavedRaster(palette.getTransferType(),
@@ -115,6 +114,13 @@ public class ImageUtils {
         if (transparent) {
             return new BufferedImage(width, height, BufferedImage.TYPE_4BYTE_ABGR);
         }
+        
+        // in case there was no active rule, the height is going to be zero, push it up
+        // so that we build a transparent image
+        if(height == 0) {
+            height = 1;
+        }
+        
         // don't use alpha channel if the image is not transparent (load testing shows this
         // image setup is the fastest to draw and encode on
         return new BufferedImage(width, height, BufferedImage.TYPE_3BYTE_BGR);
@@ -128,7 +134,7 @@ public class ImageUtils {
      * @param height
      * @param palette
      * @param transparent
-     * @return
+     *
      */
     public static long getDrawingSurfaceMemoryUse(final int width, final int height,
             final IndexColorModel palette, final boolean transparent) {
@@ -215,7 +221,7 @@ public class ImageUtils {
      * 
      * @param originalImage
      * @param invColorMap may be {@code null}
-     * @return
+     *
      */
     public static RenderedImage forceIndexed8Bitmask(RenderedImage originalImage, final InverseColorMapOp invColorMap) {
         if (LOGGER.isLoggable(Level.FINER)) {

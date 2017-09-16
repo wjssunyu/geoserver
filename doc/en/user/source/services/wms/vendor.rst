@@ -66,8 +66,29 @@ The syntax is::
 
 An example of a simple CQL filter is::
 
-   cql_filter=INTERSECT(the_geom,%20POINT%20(-74.817265%2040.5296504))
+   cql_filter=INTERSECTS(the_geom,%20POINT%20(-74.817265%2040.5296504))
    
+
+sortBy
+------
+
+The ``sortBy`` parameter allows to control the order of features/rasters displayed in the map, using the same
+syntax as WFS 1.0, that is:
+
+* ``&sortBy=att1 A|D,att2 A|D, ...`` for a single layer request
+* ``&sortBy=(att1Layer1 A|D,att2Layer1 A|D, ...)(att1Layer2 A|D,att2Layer2 A|D, ...)...`` when requesting multiple layers
+
+Care should be taken when using it as it has different behavior for raster layers, vector layers, and layer groups.
+In particular:
+
+* | For **raster layers**, ``sortBy`` maps to a "SORTING" read parameter that the reader might expose (image mosaic exposes such parameter).
+  | In image mosaic, this causes the first granule found in the sorting will display on top, and then the others will follow.
+  | Thus, to sort a scattered mosaic of satellite images so that the most recent image shows on top, and assuming the time attribute is called ``ingestion`` in the mosaic index, the specification will be ``&sortBy=ingestion D``.
+* | For **vector layers**, ``sortBy`` maps to a sort by clause in the vector data source, and then painting happens using the normal "painter model" rules, so the first item returned is painted first, and then all others on top of it.
+  | Thus, to sort a set of event points so that the most recent event is painted on top, and assuming the attribute is called "date" in the vector layer, the specification will be ``&sortBy=date`` or ``&sortBy=date A`` (ascending direction being the default one).
+* | For **layer groups**, the sort specification is going to be copied over all internal layers, so the spec has to be valid for all of them, or an error will be reported. 
+  | An empty spec can be used for layer groups in this case, for example, ``layers=theGroup,theLayer&sortBy=(),(date A)``
+ 
 
 env
 ---
@@ -122,11 +143,16 @@ The supported format options are:
   In general, the image size should be increased by a factor equal to ``targetDPI/90``, with the target dpi set in the format options.
   For example, to print  a 100x100 image at 300 DPI request a 333x333 image with the DPI value set to 300: ``&width=333&height=333&format_options=dpi:300`` 
 * ``layout``: specifies a layout name to use.  Layouts are used to add decorators such as compasses and legends.  This capability is discussed further in the :ref:`wms_decorations` section.
-* ``quantizer`` ((values = ``octree``, ``mediancut``): controls the color quantizer used to produce PNG8 images. GeoServer 2.2.0 provides two quantizers, a fast RGB quantizer called ``octree`` that does not handle translucency and a slower but more accurate RGBA quantizer called ``mediancut``. By default the first is used on opaque images, whilst the second is enabled if the client asks for a transparent image (``transparent=true``). This vendor parameter can be used to manually force the usage of a particular quantizer.
-* ``kmattr`` ((values = ``true``,``false``)): determines whether the KML returned by GeoServer should include clickable attributes or not. This parameter primarily affects Google Earth rendering.  
-* ``legend`` ((values = ``true``,``false``)): KML may add the legend.
-* ``kmscore`` ((values = between ``0`` to force raster output and ``100`` to force vector output)): parameter sets whether GeoServer should render KML data as vector or raster. This parameter primarily affects Google Earth rendering.  
+* ``quantizer`` (values = ``octree``, ``mediancut``): controls the color quantizer used to produce PNG8 images. GeoServer 2.2.0 provides two quantizers, a fast RGB quantizer called ``octree`` that does not handle translucency and a slower but more accurate RGBA quantizer called ``mediancut``. By default the first is used on opaque images, whilst the second is enabled if the client asks for a transparent image (``transparent=true``). This vendor parameter can be used to manually force the usage of a particular quantizer.
+* ``timeout``: Apply a timeout value for a getMap request. If the timeout is reached, the getMap request is cancelled and an error is returned. The value used for the timeout will be the minimum of this format option and the global WMS timeout defined in the :ref:`wms_configuration`. A value of zero means no timeout.
+* ``kmattr`` (values = ``true``, ``false``): determines whether the KML returned by GeoServer should include clickable attributes or not. This parameter primarily affects Google Earth rendering.  
+* ``legend`` (values = ``true``, ``false``): KML may add the legend.
+* ``kmscore`` (values = between ``0`` to force raster output and ``100`` to force vector output): parameter sets whether GeoServer should render KML data as vector or raster. This parameter primarily affects Google Earth rendering.  
 * ``kmltitle``: parameter sets the KML title.
+* ``kmlrefresh`` (values = greater than ``0`` or ``expires``): Force Network Link reload in refresh mode on interval of seconds.  When expires is specified client will refresh whenever the time has elapsed specified in cache expiration headers.  The caching time may be set in the Layer configuration under Publishing tab setting  HTTP Cache Time. This parameter primarily affects Google Earth rendering and is dependent on being respected by the client.  Using a second interval is a more reliable choice.  
+* ``kmlvisible`` (values = ``true``, ``false``): Indicates whether layers selected will default to enabled or not. Default behavior is enabled. This parameter primarily affects Google Earth rendering.
+* ``advancedProjectionHandling`` (values = ``true``, ``false``): Enable \ Disable advanced projection handling, if it is enabled in the GUI. If it is disabled in the GUI, this option has no effect.
+* ``mapWrapping`` (values = ``true``, ``false``): Enable \ Disable continuous map wrapping, if it is enabled in the GUI. If it is disabled in the GUI, this option has no effect. Continuous map wrapping will also be disabled if ``advancedProjectionHandling`` is disabled.
 
 maxFeatures and startIndex
 --------------------------
@@ -266,3 +292,38 @@ The two possible values are:
                    
 The two methods tend to return values rather close to each other near the equator, but they
 do diverge to larger differences as the latitude approaches the poles.
+
+.. _wms_vendor_parameter_interpolations:
+
+interpolations
+--------------
+
+The ``interpolations`` parameter allows choosing a specific resampling (interpolation) method. 
+It can be used in the ``GetMap`` operation. 
+
+If more than one layer is specified in the ``layers`` parameter, then a separate interpolation method can be specified for each layer, separated by commas.
+The syntax is::
+
+   interpolations=method1,method2,... 
+
+method<n> values can be one of the following: 
+
+ * **nearest neighbor**
+ * **bilinear**
+ * **bicubic**
+
+or empty if the default method has to be used for the related layer. 
+
+The parameter allows to override the global *WMS Raster Rendering Options* setting (see :ref:`WMS Settings <services_webadmin_wms>` for more info), as well as the layer specific *Default Interpolation Method* publishing parameter (see :ref:`Layers <data_webadmin_layers>` for more info), on a layer by layer basis.
+
+format
+------
+
+The ``format`` parameter can be used to request capabilities documents in a certain format. If the requested format is not supported the default format will be used.
+
+An example request:
+
+  http://localhost:8080/geoserver/ows?service=wms&version=1.1.1&request=GetCapabilities&format=text/xml
+
+.. note::  
+  Currently this parameter can only be used to request WMS 1.1.1 capabilities documents encoded in ``text/xml``, if used with other WMS versions or other formats it will have no effect.

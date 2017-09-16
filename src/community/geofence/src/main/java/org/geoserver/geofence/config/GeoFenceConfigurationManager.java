@@ -21,17 +21,16 @@
 package org.geoserver.geofence.config;
 
 import java.io.BufferedWriter;
-import java.io.File;
-import java.io.FileWriter;
 import java.io.IOException;
+import java.io.OutputStreamWriter;
 import java.io.Writer;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 
-import org.apache.commons.io.FileUtils;
 import org.apache.commons.io.IOUtils;
 import org.geoserver.geofence.GeofenceAccessManager;
 import org.geoserver.geofence.cache.CacheConfiguration;
+import org.geoserver.platform.resource.Resource;
 import org.geotools.util.logging.Logging;
 
 /**
@@ -76,13 +75,11 @@ public class GeoFenceConfigurationManager {
 
 
     public void storeConfiguration() throws IOException {
-        File configurationFile =  configurer.getConfigFile();
-
-        FileUtils.forceMkdir(configurationFile.getParentFile());
+        Resource configurationFile =  configurer.getConfigFile();
 
         BufferedWriter writer = null;
         try {
-            writer = new BufferedWriter(new FileWriter(configurationFile));
+            writer = new BufferedWriter(new OutputStreamWriter(configurationFile.out()));
 
             writer.write("### GeoFence Module configuration file\n");
             writer.write("### \n");
@@ -109,7 +106,6 @@ public class GeoFenceConfigurationManager {
         saveConfig(writer, "instanceName", configuration.getInstanceName());
         saveConfig(writer, "servicesUrl", configuration.getServicesUrl());
         saveConfig(writer, "allowRemoteAndInlineLayers", configuration.isAllowRemoteAndInlineLayers());
-        saveConfig(writer, "allowDynamicStyles", configuration.isAllowDynamicStyles());
         saveConfig(writer, "grantWriteToWorkspacesToAuthenticatedUsers", configuration.isGrantWriteToWorkspacesToAuthenticatedUsers());
         saveConfig(writer, "useRolesToFilter", configuration.isUseRolesToFilter());
         saveConfig(writer, "acceptedRoles", configuration.getAcceptedRoles());
@@ -131,7 +127,7 @@ public class GeoFenceConfigurationManager {
 
    /**
     * Returns a copy of the configuration.
-    * @return
+    *
     */
 
     public void setConfigurer(GeoFencePropertyPlaceholderConfigurer configurer) {

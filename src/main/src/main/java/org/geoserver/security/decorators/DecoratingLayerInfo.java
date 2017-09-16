@@ -15,9 +15,9 @@ import org.geoserver.catalog.LayerIdentifierInfo;
 import org.geoserver.catalog.LayerInfo;
 import org.geoserver.catalog.LegendInfo;
 import org.geoserver.catalog.MetadataMap;
+import org.geoserver.catalog.PublishedType;
 import org.geoserver.catalog.ResourceInfo;
 import org.geoserver.catalog.StyleInfo;
-import org.geoserver.catalog.WorkspaceInfo;
 import org.geoserver.catalog.impl.AbstractDecorator;
 
 /**
@@ -68,7 +68,7 @@ public class DecoratingLayerInfo extends AbstractDecorator<LayerInfo> implements
         return delegate.getStyles();
     }
 
-    public Type getType() {
+    public PublishedType getType() {
         return delegate.getType();
     }
 
@@ -108,7 +108,7 @@ public class DecoratingLayerInfo extends AbstractDecorator<LayerInfo> implements
         delegate.setResource(resource);
     }
 
-    public void setType(Type type) {
+    public void setType(PublishedType type) {
         delegate.setType(type);
     }
 
@@ -181,4 +181,20 @@ public class DecoratingLayerInfo extends AbstractDecorator<LayerInfo> implements
     public void setAbstract(String abstractTxt) {
         delegate.setAbstract(abstractTxt);
     }
+
+    @Override
+    public String getPrefixedName() {
+        return delegate.getPrefixedName();
+    }
+    
+    @Override
+    public WMSInterpolation getDefaultWMSInterpolationMethod() {
+        return delegate.getDefaultWMSInterpolationMethod();
+    }
+    
+    @Override
+    public void setDefaultWMSInterpolationMethod(WMSInterpolation interpolationMethod) {
+        delegate.setDefaultWMSInterpolationMethod(interpolationMethod);
+    }
+    
 }

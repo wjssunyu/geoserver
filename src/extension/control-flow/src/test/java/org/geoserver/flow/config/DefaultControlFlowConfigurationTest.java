@@ -5,8 +5,11 @@
  */
 package org.geoserver.flow.config;
 
-import static org.junit.Assert.*;
+import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertFalse;
+import static org.junit.Assert.assertTrue;
 
+import java.io.File;
 import java.io.IOException;
 import java.util.Collections;
 import java.util.List;
@@ -21,7 +24,10 @@ import org.geoserver.flow.controller.IpRequestMatcher;
 import org.geoserver.flow.controller.RateFlowController;
 import org.geoserver.flow.controller.SingleIpFlowController;
 import org.geoserver.flow.controller.UserConcurrentFlowController;
+import org.geoserver.platform.GeoServerResourceLoader;
+import org.geoserver.platform.resource.Files;
 import org.geoserver.platform.resource.Resource;
+import org.geoserver.platform.resource.Resources;
 import org.geoserver.security.PropertyFileWatcher;
 import org.junit.Test;
 
@@ -37,6 +43,8 @@ public class DefaultControlFlowConfigurationTest {
         p.put("ip", "12");
         p.put("ip.192.168.1.8", "14");
         p.put("ip.192.168.1.10", "15");
+        p.put("ip.blacklist", "192.168.1.1,192.168.1.2");
+        p.put("ip.whitelist", "192.168.1.3,192.168.1.4");
         p.put("user.ows", "20/s");
         p.put("user.ows.wms", "300/m;3s");
         p.put("ip.ows.wms.getmap", "100/m;3s");
@@ -106,6 +114,20 @@ public class DefaultControlFlowConfigurationTest {
         assertTrue(controllers.get(9) instanceof GlobalFlowController);
         GlobalFlowController gc = (GlobalFlowController) controllers.get(9);
         assertEquals(100, gc.getPriority());
+
+        // store the properties into a temp folder and relaod
+        assertTrue(configurator.getFileLocations().isEmpty());
+        
+        File tmpDir = createTempDir();
+        GeoServerResourceLoader resourceLoader = new GeoServerResourceLoader(tmpDir);
+        
+        configurator.saveConfiguration(resourceLoader);
+        Resource controlFlowProps = Files.asResource(resourceLoader.find("controlflow.properties"));
+        assertTrue(Resources.exists(controlFlowProps));
+        
+        PropertyFileWatcher savedProps = new PropertyFileWatcher(controlFlowProps);
+        
+        assertEquals(savedProps.getProperties(), p);
     }
 
     static class FixedWatcher extends PropertyFileWatcher {
@@ -132,5 +154,12 @@ public class DefaultControlFlowConfigurationTest {
         public Properties getProperties() throws IOException {
             return properties;
         }
+    }
+    
+    static File createTempDir() throws IOException {
+        File f = File.createTempFile("controlFlow", "data", new File("target"));
+        f.delete();
+        f.mkdirs();
+        return f;
     }
 }

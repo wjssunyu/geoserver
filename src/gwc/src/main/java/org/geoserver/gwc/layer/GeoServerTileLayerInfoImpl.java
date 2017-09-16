@@ -1,4 +1,4 @@
-/* (c) 2014 Open Source Geospatial Foundation - all rights reserved
+/* (c) 2014 - 2016 Open Source Geospatial Foundation - all rights reserved
  * (c) 2001 - 2013 OpenPlans
  * This code is licensed under the GPL 2.0 license, available at the root
  * application directory.
@@ -17,11 +17,14 @@ import java.util.Set;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 
+import javax.annotation.Nullable;
+
 import org.apache.commons.lang.builder.EqualsBuilder;
 import org.apache.commons.lang.builder.HashCodeBuilder;
 import org.apache.commons.lang.builder.ToStringBuilder;
 import org.apache.commons.lang.builder.ToStringStyle;
 import org.geotools.util.logging.Logging;
+import org.geowebcache.config.BlobStoreConfig;
 import org.geowebcache.config.XMLGridSubset;
 import org.geowebcache.filter.parameters.ParameterFilter;
 import org.geowebcache.filter.request.RequestFilter;
@@ -50,9 +53,13 @@ public class GeoServerTileLayerInfoImpl implements Serializable, GeoServerTileLa
     // // AbstractTileLayer mirror properties ////
 
     private boolean enabled;
+    
+    private Boolean inMemoryCached;
 
     private String name;
 
+    private String blobStoreId;
+    
     @SuppressWarnings("unused")
     transient private LayerMetaInformation metaInformation;
 
@@ -120,7 +127,7 @@ public class GeoServerTileLayerInfoImpl implements Serializable, GeoServerTileLa
      * 
      * @return {@code this}
      */
-    private final GeoServerTileLayerInfo readResolve() {
+    private final Object readResolve() {
         if (null == metaWidthHeight) {
             metaWidthHeight = new int[2];
         }
@@ -214,6 +221,17 @@ public class GeoServerTileLayerInfoImpl implements Serializable, GeoServerTileLa
     @Override
     public void setName(String name) {
         this.name = name;
+    }
+
+    @Override
+    @Nullable
+    public String getBlobStoreId() {
+        return blobStoreId;
+    }
+
+    @Override
+    public void setBlobStoreId(@Nullable String blobStoreId) {
+        this.blobStoreId = blobStoreId;
     }
 
     /**
@@ -375,7 +393,7 @@ public class GeoServerTileLayerInfoImpl implements Serializable, GeoServerTileLa
             }
         }
     }
-
+    
     /**
      * @see org.geoserver.gwc.layer.GeoServerTileLayerInfo#getParameterFilters()
      */
@@ -421,5 +439,15 @@ public class GeoServerTileLayerInfoImpl implements Serializable, GeoServerTileLa
     @Override
     public ParameterFilter getParameterFilter(String key) {
         return parameterFiltersMap.get(key.toUpperCase());
+    }
+
+    @Override
+    public boolean isInMemoryCached() {
+        return inMemoryCached != null ? inMemoryCached : true;
+    }
+
+    @Override
+    public void setInMemoryCached(boolean inMemoryCached) {
+        this.inMemoryCached = inMemoryCached;
     }
 }

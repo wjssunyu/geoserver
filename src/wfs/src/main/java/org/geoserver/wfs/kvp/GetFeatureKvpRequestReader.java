@@ -113,7 +113,7 @@ public class GetFeatureKvpRequestReader extends WFSKvpRequestReader {
                     EMFUtils.set(eObject, "outputFormat", "text/xml; subtype=gml/3.1.1"); break;
                 case V_20:
                 default:
-                    EMFUtils.set(eObject, "outputFormat", "text/xml; subtype=gml/3.2");
+                    EMFUtils.set(eObject, "outputFormat", "application/gml+xml; version=3.2");
             };
         }
 
@@ -163,17 +163,16 @@ public class GetFeatureKvpRequestReader extends WFSKvpRequestReader {
             kvp.put("typeName", list);
             querySet(eObject, "typeName", list);
         } else {
-            //check for featureId and infer typeName
+            // check for featureId and infer typeName
             // in WFS 2.0 it is resourceId
             if (kvp.containsKey("featureId") || kvp.containsKey("resourceId")) {
                 //use featureId to infer type Names
                 List featureId = (List) kvp.get("featureId");
                 featureId = featureId != null ? featureId : (List) kvp.get("resourceId");
                 
-                ArrayList typeNames = new ArrayList();
-
                 QNameKvpParser parser = new QNameKvpParser("typeName", catalog);
 
+                Set<List> hTypeNames = new HashSet<>();
                 for (int i = 0; i < featureId.size(); i++) {
                     String fid = (String) featureId.get(i);
                     int pos = fid.indexOf(".");
@@ -182,11 +181,13 @@ public class GetFeatureKvpRequestReader extends WFSKvpRequestReader {
                         String typeName = fid.substring(0, fid.lastIndexOf("."));
 
                         //add to a list to set on the query
-                        List parsed = (List) parser.parse(typeName);
-                        typeNames.add(parsed);
+                        List<QName> parsed = (List) parser.parse(typeName);
+                        hTypeNames.add(parsed);
                     }
                 }
-
+                
+                //remove duplicate typeNames from the list
+                List typeNames = new ArrayList<>(hTypeNames);
                 querySet(eObject, "typeName", typeNames);
             } else {
                 //check for stored query id, i have seen both storedQueryId and storedQuery_Id used
@@ -471,6 +472,15 @@ public class GetFeatureKvpRequestReader extends WFSKvpRequestReader {
                 String msg = "Specified " + m + " " + property + " for " + n + " queries.";
                 throw new WFSException(request, msg);
             }
+        }
+        if(m < n) {
+            // fill the rest with nulls
+            List newValues = new ArrayList<>();
+            newValues.addAll(values);
+            for (int i = 0; i < n - m; i++) {
+                newValues.add(null);
+            }
+            values = newValues;
         }
 
         EMFUtils.set(query, property, values);

@@ -140,7 +140,7 @@ public class ReprojectionTest extends WFSTestSupport {
     
     @Test
     public void testReprojectNullGeometries() throws Exception {
-        // see http://jira.codehaus.org/browse/GEOS-1612
+        // see https://osgeo-org.atlassian.net/browse/GEOS-1612
         String xml = "<wfs:GetFeature " + "service=\"WFS\" "
         + "version=\"1.0.0\" "
         + "xmlns:cdf=\"http://www.opengis.net/cite/data\" "
@@ -203,7 +203,6 @@ public class ReprojectionTest extends WFSTestSupport {
 
     /**
      * See GEOT-3760
-     * @throws Exception
      */
     @Test
     public void testGetFeatureWithProjectedBoxIntersectsPost() throws Exception {
@@ -242,8 +241,7 @@ public class ReprojectionTest extends WFSTestSupport {
     
     /**
      * Returns the transformed corners of the POLYGON layer bbox
-     * @return
-     * @throws Exception
+     *
      * @throws TransformException
      */
     private double[] getTransformedPolygonsLayerBBox() throws Exception, TransformException {

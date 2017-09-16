@@ -1,4 +1,4 @@
-/* (c) 2014 Open Source Geospatial Foundation - all rights reserved
+/* (c) 2014-2015 Open Source Geospatial Foundation - all rights reserved
  * (c) 2014 OpenPlans
  * This code is licensed under the GPL 2.0 license, available at the root
  * application directory.
@@ -8,6 +8,7 @@ package org.geoserver.platform.resource;
 import java.io.File;
 import java.io.InputStream;
 import java.io.OutputStream;
+import java.util.Collections;
 import java.util.List;
 
 /**
@@ -22,6 +23,7 @@ final class NullResourceStore implements ResourceStore {
     @Override
     public Resource get(final String resourcePath) {
         return new Resource() {
+            
             String path = resourcePath;
 
             @Override
@@ -84,7 +86,7 @@ final class NullResourceStore implements ResourceStore {
 
             @Override
             public List<Resource> list() {
-                return null;
+                return Collections.emptyList();
             }
 
             @Override
@@ -146,6 +148,11 @@ final class NullResourceStore implements ResourceStore {
     @Override
     public boolean move(String path, String target) {
         return false; // unable to move empty resource
+    }
+
+    @Override
+    public ResourceNotificationDispatcher getResourceNotificationDispatcher() {
+        return null;
     }
 
 }

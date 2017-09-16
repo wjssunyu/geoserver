@@ -1,4 +1,4 @@
-/* (c) 2014 Open Source Geospatial Foundation - all rights reserved
+/* (c) 2014 - 2015 Open Source Geospatial Foundation - all rights reserved
  * (c) 2001 - 2013 OpenPlans
  * This code is licensed under the GPL 2.0 license, available at the root
  * application directory.
@@ -13,51 +13,20 @@ import java.util.Set;
  * @author Justin Deoliveira, The Open Planning Project
  */
 public interface LayerInfo extends PublishedInfo {
-    
+
+    enum WMSInterpolation {
+        Nearest, Bilinear, Bicubic
+    }
+
     /**
      * The rendering buffer
      */
     public static final String BUFFER = "buffer";
 
     /**
-     * Enumeration for type of layer.
-     */
-    public enum Type {
-        VECTOR {
-            public Integer getCode() {
-                return 0;
-            }
-        },
-        RASTER {
-            public Integer getCode() {
-                return 1;
-            }
-        }, 
-        REMOTE {
-            public Integer getCode() {
-                return 2;
-            }
-            
-        },
-        WMS {
-            public Integer getCode() {
-                return 3;
-            }
-        };
-        
-        
-        public abstract Integer getCode();
-    }
-
-    /**
-     * The type of the layer.
-     */
-    Type getType();
-
-    /**
      * Sets the type of the layer.
      */
-    void setType( Type type );
+    void setType( PublishedType type );
 
     /**
      * The path which this layer is mapped to.
@@ -163,8 +132,8 @@ public interface LayerInfo extends PublishedInfo {
     /**
      * Sets the queryable status
      *
-     * @param {@code true} to set this Layer as queryable and subject of GetFeatureInfo requests,
-     *        {@code false} to make the layer not queryable.
+     * @param queryable {@code true} to set this Layer as queryable and subject of
+     *        GetFeatureInfo requests, {@code false} to make the layer not queryable.
      */
     void setQueryable(boolean queryable);
 
@@ -179,40 +148,21 @@ public interface LayerInfo extends PublishedInfo {
     /**
      * Sets the opaque status
      * 
-     * @param {@code true} to set this Layer as opaque,
-     *        {@code false} to make the layer not opaque.
+     * @param opaque {@code true} to set this Layer as opaque, {@code false} to make the layer transparent.
      */
     void setOpaque(boolean opaque);
 
     /**
-     * Whether the layer is opaque
+     * Controls layer transparency (whether the layer is opaque or transparent).
      * <p>
-     * Defaults to {@code false}
+     * Defaults to {@code false}.
      * </p>
+     * @return Returns {@code true} for opaque layer, {@code false} for transparent.
      */
-    boolean isOpaque();
-
-    /**
-     * Gets the attribution information for this layer.  
-     *
-     * @return an AttributionInfo instance with the layer's attribution information.
-     *
-     * @see AttributionInfo
-     */
-    AttributionInfo getAttribution();
-
-    /**
-     * Sets the attribution information for this layer.  
-     *
-     * @param attribution an AttributionInfo instance with the new attribution information.
-     *
-     * @see AttributionInfo
-     */
-    void setAttribution(AttributionInfo attribution);
-    
+    boolean isOpaque();    
     /**
      * Returns true if the layer existence should be advertised (true by default, unless otherwise set)
-     * @return
+     *
      */
     boolean isAdvertised();
     
@@ -222,4 +172,28 @@ public interface LayerInfo extends PublishedInfo {
      */
     void setAdvertised(boolean advertised);
 
+    /**
+     * The default WMS interpolation method.
+     *
+     * <p>
+     * If not specifed (i.e. {@code null}), the service default will be used.
+     * </p>
+     */
+    WMSInterpolation getDefaultWMSInterpolationMethod();
+
+    /**
+     * Sets the default WMS interpolation method.
+     *
+     * <p>
+     * Admissible values are:
+     *  <ul>
+     *   <li><strong>Nearest</strong> - Nearest Neighbor Interpolation</li>
+     *   <li><strong>Bilinear</strong> - Bilinear Interpolation</li>
+     *   <li><strong>Bicubic</strong> - Bicubic Interpolation</li>
+     *  </ul>
+     * </p>
+     *
+     * @param interpolationMethod the interpolation method used by default
+     */
+    void setDefaultWMSInterpolationMethod(WMSInterpolation interpolationMethod);
 }

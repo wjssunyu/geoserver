@@ -1,4 +1,4 @@
-/* (c) 2014 Open Source Geospatial Foundation - all rights reserved
+/* (c) 2014 - 2016 Open Source Geospatial Foundation - all rights reserved
  * (c) 2001 - 2013 OpenPlans
  * This code is licensed under the GPL 2.0 license, available at the root
  * application directory.
@@ -24,6 +24,7 @@ import org.geotools.data.FeatureLocking;
 import org.geotools.data.FeatureReader;
 import org.geotools.data.FeatureStore;
 import org.geotools.data.FeatureWriter;
+import org.geotools.data.Join;
 import org.geotools.data.LockingManager;
 import org.geotools.data.Query;
 import org.geotools.data.ServiceInfo;
@@ -57,6 +58,10 @@ public class RetypingDataStore implements DataStore {
         this.wrapped = wrapped;
         // force update of type mapping maps
         getTypeNames();
+    }
+    
+    public DataStore getWrapped() {
+        return wrapped;
     }
 
     public void createSchema(SimpleFeatureType featureType) throws IOException {
@@ -155,7 +160,7 @@ public class RetypingDataStore implements DataStore {
         reader = wrapped.getFeatureReader(retypeQuery(query, map), transaction);
         if (map.isUnchanged())
             return reader;
-        return new RetypingFeatureCollection.RetypingFeatureReader(reader, map.getFeatureType());
+        return new RetypingFeatureCollection.RetypingFeatureReader(reader, map.getFeatureType(query));
     }
 
     public SimpleFeatureSource getFeatureSource(String typeName) throws IOException {
@@ -182,7 +187,7 @@ public class RetypingDataStore implements DataStore {
      * Returns the type map given the external type name
      * 
      * @param externalTypeName
-     * @return
+     *
      * @throws IOException
      */
     FeatureTypeMap getTypeMapBackwards(String externalTypeName, boolean checkMap) throws IOException {
@@ -224,7 +229,7 @@ public class RetypingDataStore implements DataStore {
      * replacement
      * 
      * @param original
-     * @return
+     *
      * @throws IOException
      */
     protected SimpleFeatureType transformFeatureType(SimpleFeatureType original) throws IOException {
@@ -247,7 +252,7 @@ public class RetypingDataStore implements DataStore {
      * to be hidden
      * 
      * @param originalName
-     * @return
+     *
      */
     protected String transformFeatureTypeName(String originalName) {
          return originalName.replaceAll(":", "_");
@@ -262,13 +267,34 @@ public class RetypingDataStore implements DataStore {
      * provided typemap
      * @param q
      * @param typeMap
-     * @return
+     *
      * @throws IOException
      */
-    Query retypeQuery(Query q, FeatureTypeMap typeMap) {
+    Query retypeQuery(Query q, FeatureTypeMap typeMap) throws IOException {
         Query modified = new Query(q);
         modified.setTypeName(typeMap.getOriginalName());
         modified.setFilter(retypeFilter(q.getFilter(), typeMap));
+        List<Join> joins = q.getJoins();
+        if(!joins.isEmpty()) {
+            modified.getJoins().clear();
+            for (Join join : joins) {
+                FeatureTypeMap map = (FeatureTypeMap) backwardsMap.get(join.getTypeName());
+                if(map == null) {
+                    // nothing we can do about it
+                    modified.getJoins().add(join);
+                } else {
+                    final FeatureTypeMap joinTypeMap = getTypeMapBackwards(join.getTypeName(), true);
+                    String originalName = joinTypeMap.getOriginalName();
+                    Join mj = new Join(originalName, join.getJoinFilter());
+                    mj.setType(join.getType());
+                    mj.setAlias(join.getAlias());
+                    mj.setProperties(join.getProperties());
+                    mj.setFilter(join.getFilter());
+                    modified.getJoins().add(mj);
+                }
+            }
+            
+        }
         return modified;
     }
 
@@ -276,7 +302,7 @@ public class RetypingDataStore implements DataStore {
      * Retypes a filter making sure the fids are using the internal typename prefix
      * @param filter
      * @param typeMap
-     * @return
+     *
      */
     Filter retypeFilter(Filter filter, FeatureTypeMap typeMap) {
         FidTransformeVisitor visitor = new FidTransformeVisitor(typeMap);

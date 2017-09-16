@@ -1,8 +1,28 @@
 package org.geoserver.wcs2_0.kvp;
 
-import static org.junit.Assert.assertEquals;
+import static junit.framework.TestCase.assertEquals;
+import static org.hamcrest.CoreMatchers.equalTo;
+import static org.junit.Assert.assertThat;
 
+import java.awt.image.Raster;
+import java.io.ByteArrayInputStream;
+import java.io.IOException;
 import java.util.Map;
+
+import javax.xml.namespace.QName;
+
+import org.eclipse.emf.common.util.EList;
+import org.geoserver.data.test.MockData;
+import org.geoserver.data.test.SystemTestData;
+import org.geoserver.ows.util.ResponseUtils;
+import org.geoserver.wcs2_0.WCS20Const;
+import org.geotools.coverage.grid.GridCoverage2D;
+import org.geotools.data.DataSourceException;
+import org.geotools.gce.geotiff.GeoTiffReader;
+import org.geotools.wcs.v2_0.RangeSubset;
+import org.geotools.wcs.v2_0.Scaling;
+import org.junit.Test;
+import org.springframework.mock.web.MockHttpServletResponse;
 
 import net.opengis.wcs20.GetCoverageType;
 import net.opengis.wcs20.InterpolationType;
@@ -17,15 +37,17 @@ import net.opengis.wcs20.ScalingType;
 import net.opengis.wcs20.TargetAxisExtentType;
 import net.opengis.wcs20.TargetAxisSizeType;
 
-import org.eclipse.emf.common.util.EList;
-import org.geoserver.wcs2_0.WCS20Const;
-import org.geotools.wcs.v2_0.RangeSubset;
-import org.geotools.wcs.v2_0.Scaling;
-import org.junit.Test;
-
-import com.mockrunner.mock.web.MockHttpServletResponse;
-
 public class GetCoverageKvpTest extends WCSKVPTestSupport {
+    
+    private static final QName RAIN = new QName(MockData.SF_URI, "rain", MockData.SF_PREFIX);
+    
+    @Override
+    protected void onSetUp(SystemTestData testData) throws Exception {
+        super.onSetUp(testData);
+        testData.addRasterLayer(RAIN, "rain.zip", "asc", getCatalog());
+        testData.addRasterLayer(new QName(MockData.SF_URI, "mosaic", MockData.SF_PREFIX), 
+                "raster-filter-test.zip",null, null ,SystemTestData.class, getCatalog());
+    }
 
     @Test
     public void testParseBasic() throws Exception {
@@ -33,7 +55,40 @@ public class GetCoverageKvpTest extends WCSKVPTestSupport {
         
         assertEquals("theCoverage", gc.getCoverageId());
     }
+
+    @Test
+    public void testGetCoverageNoWs() throws Exception {
+        MockHttpServletResponse response = getAsServletResponse("wcs?request=GetCoverage&service=WCS&version=2.0.1" +
+                "&coverageId=BlueMarble&Format=image/tiff");  
+
+        assertEquals("image/tiff", response.getContentType());      
+    }
     
+    @Test
+    public void testGetCoverageNativeFormat() throws Exception {
+        MockHttpServletResponse response = getAsServletResponse("wcs?request=GetCoverage&service=WCS&version=2.0.1" +
+                "&coverageId=sf__rain");  
+
+        // we got back an ArcGrid response
+        assertEquals("text/plain", response.getContentType());      
+    }
+    
+    @Test
+    public void testNotExistent() throws Exception {
+        MockHttpServletResponse response = getAsServletResponse("wcs?request=GetCoverage&service=WCS&version=2.0.1" +
+                "&coverageId=NotThere&&Format=image/tiff");  
+        checkOws20Exception(response, 404, "NoSuchCoverage", "coverageId");      
+    }
+
+
+    @Test
+    public void testGetCoverageLocalWs() throws Exception {
+        MockHttpServletResponse response = getAsServletResponse("wcs/wcs?request=GetCoverage&service=WCS&version=2.0.1" +
+                "&coverageId=BlueMarble&&Format=image/tiff");  
+
+        assertEquals("image/tiff", response.getContentType());      
+    }
+
     @Test
     public void testExtensionScaleFactor() throws Exception {
         GetCoverageType gc = parse("wcs?request=GetCoverage&service=WCS&version=2.0.1" +
@@ -186,5 +241,42 @@ public class GetCoverageKvpTest extends WCSKVPTestSupport {
         checkOws20Exception(response, 404, "NoSuchCoverage", "coverageId");
     }
     
+    @Test
+    public void testCqlFilterRed() throws Exception {
+        MockHttpServletResponse response = getAsServletResponse("wcs?request=GetCoverage&service=WCS&version=2.0.1&coverageId=sf__mosaic&CQL_FILTER=location like 'red%25'");
+        assertOriginPixelColor(response, new int[] {255, 0, 0});
+    }
+
+    @Test
+    public void testCqlFilterGreen() throws Exception {
+        MockHttpServletResponse response = getAsServletResponse("wcs?request=GetCoverage&service=WCS&version=2.0.1&coverageId=sf__mosaic&CQL_FILTER=location like 'green%25'");
+        assertOriginPixelColor(response, new int[] {0, 255, 0});
+    }
     
+    @Test
+    public void testSortByLocationAscending() throws Exception {
+        MockHttpServletResponse response = getAsServletResponse("wcs?request=GetCoverage&service=WCS&version=2.0.1&coverageId=sf__mosaic&sortBy=location");
+        // green is the lowest, lexicographically
+        assertOriginPixelColor(response, new int[] {0, 255, 0});
+    }
+    
+    @Test
+    public void testSortByLocationDescending() throws Exception {
+        MockHttpServletResponse response = getAsServletResponse("wcs?request=GetCoverage&service=WCS&version=2.0.1&coverageId=sf__mosaic&sortBy=location D");
+        // yellow is the highest, lexicographically
+        assertOriginPixelColor(response, new int[] {255, 255, 0});
+    }
+    
+    private void assertOriginPixelColor(MockHttpServletResponse response, int[] expected)
+            throws DataSourceException, IOException {
+        assertEquals("image/tiff", response.getContentType());
+        byte[] bytes = response.getContentAsByteArray();
+        
+        GeoTiffReader reader = new GeoTiffReader(new ByteArrayInputStream(bytes));
+        GridCoverage2D coverage = reader.read(null);
+        Raster raster = coverage.getRenderedImage().getData();
+        int[] pixel = new int[3];
+        raster.getPixel(0, 0, pixel);
+        assertThat(pixel, equalTo(expected));
+    }
 }

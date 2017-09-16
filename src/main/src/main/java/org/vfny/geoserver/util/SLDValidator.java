@@ -10,30 +10,20 @@
  */
 package org.vfny.geoserver.util;
 
-import java.io.BufferedReader;
-import java.io.InputStream;
-import java.io.InputStreamReader;
-import java.io.Reader;
+import java.io.*;
 import java.net.URL;
-import java.util.ArrayList;
 import java.util.List;
 import java.util.logging.Logger;
 
-import javax.xml.XMLConstants;
-import javax.xml.transform.Source;
-import javax.xml.transform.stream.StreamSource;
-import javax.xml.validation.Schema;
-import javax.xml.validation.SchemaFactory;
-import javax.xml.validation.Validator;
-
-import org.xml.sax.ErrorHandler;
+import org.xml.sax.EntityResolver;
 import org.xml.sax.InputSource;
-import org.xml.sax.SAXException;
 import org.xml.sax.SAXParseException;
 
 
 public class SLDValidator {
     static Logger LOGGER = org.geotools.util.logging.Logging.getLogger("org.vfny.geoserver");
+    
+    EntityResolver entityResolver;
 
     public SLDValidator() {
     }
@@ -44,7 +34,7 @@ public class SLDValidator {
      * @param xml
      * @param baseUrl GeoServer base URL
      *
-     * @return
+     *
      */
     @Deprecated
     public List validateSLD(InputStream xml, String baseUrl) {
@@ -57,10 +47,18 @@ public class SLDValidator {
      * @param xml
      * @param baseUrl GeoServer base URL
      *
-     * @return
+     *
      */
     public List validateSLD(InputStream xml) {
         return validateSLD(new InputSource(xml));
+    }
+
+    public EntityResolver getEntityResolver() {
+        return entityResolver;
+    }
+
+    public void setEntityResolver(EntityResolver entityResolver) {
+        this.entityResolver = entityResolver;
     }
 
     public static String getErrorMessage(InputStream xml, List errors) {
@@ -198,6 +196,6 @@ public class SLDValidator {
      */
     public List validateSLD(InputSource xml) {
         URL schemaURL = SLDValidator.class.getResource("/schemas/sld/StyledLayerDescriptor.xsd");
-        return ResponseUtils.validate(xml, schemaURL, false);
+        return ResponseUtils.validate(xml, schemaURL, false, entityResolver);
     }
 }

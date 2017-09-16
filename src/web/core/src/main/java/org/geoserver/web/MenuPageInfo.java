@@ -22,7 +22,7 @@ import org.geoserver.web.services.ServiceMenuPageInfo;
  * @author David Winslow <dwinslow@opengeo.org>
  */
 @SuppressWarnings("serial")
-public class MenuPageInfo extends ComponentInfo<GeoServerBasePage> implements Comparable<MenuPageInfo> {
+public class MenuPageInfo<T extends GeoServerBasePage> extends ComponentInfo<T> implements Comparable<MenuPageInfo<T>> {
     Category category;
     int order;
     String icon;
@@ -34,7 +34,7 @@ public class MenuPageInfo extends ComponentInfo<GeoServerBasePage> implements Co
          * This method is invoked only if the page happens to be a {@link GeoServerSecuredPage}. 
          * <p>If you do override this method, make sure to override the authorizer grabbing
          * method in the page as well</p>
-         * @return
+         *
          */
         setAuthorizer(GeoServerSecuredPage.DEFAULT_AUTHORIZER);
     }
@@ -62,7 +62,7 @@ public class MenuPageInfo extends ComponentInfo<GeoServerBasePage> implements Co
         return order;
     }
 
-    public int compareTo(MenuPageInfo other){
+    public int compareTo(MenuPageInfo<T> other){
         return getOrder() - other.getOrder();
     }
 }

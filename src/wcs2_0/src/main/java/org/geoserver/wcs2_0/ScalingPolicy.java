@@ -1,4 +1,4 @@
-/* (c) 2014 Open Source Geospatial Foundation - all rights reserved
+/* (c) 2014-2015 Open Source Geospatial Foundation - all rights reserved
  * (c) 2001 - 2013 OpenPlans
  * This code is licensed under the GPL 2.0 license, available at the root
  * application directory.
@@ -15,9 +15,6 @@ import javax.media.jai.InterpolationNearest;
 import javax.media.jai.JAI;
 import javax.media.jai.Warp;
 import javax.media.jai.WarpAffine;
-import javax.media.jai.operator.AffineDescriptor;
-import javax.media.jai.operator.ScaleDescriptor;
-import javax.media.jai.operator.WarpDescriptor;
 
 import net.opengis.wcs20.ScaleAxisByFactorType;
 import net.opengis.wcs20.ScaleAxisType;
@@ -39,7 +36,7 @@ import org.geotools.coverage.processing.operation.Scale;
 import org.geotools.factory.Hints;
 import org.geotools.resources.coverage.CoverageUtilities;
 import org.geotools.util.Utilities;
-import org.jaitools.imageutils.ImageLayout2;
+import it.geosolutions.jaiext.utilities.ImageLayout2;
 import org.opengis.coverage.grid.GridEnvelope;
 import org.opengis.coverage.processing.Operation;
 import org.opengis.parameter.ParameterValueGroup;
@@ -250,9 +247,9 @@ enum ScalingPolicy {
             TargetAxisExtentType xExtent = null, yExtent = null;
             for (TargetAxisExtentType axisExtentType : targetAxisExtentElements) {
                 final String axisName = axisExtentType.getAxis();
-                if (axisName.equals("http://www.opengis.net/def/axis/OGC/1/i")) {
+                if (axisName.equals("http://www.opengis.net/def/axis/OGC/1/i") || axisName.equals("i")) {
                     xExtent = axisExtentType;
-                } else if (axisName.equals("http://www.opengis.net/def/axis/OGC/1/j")) {
+                } else if (axisName.equals("http://www.opengis.net/def/axis/OGC/1/j") || axisName.equals("j")) {
                     yExtent = axisExtentType;
                 } else {
                     // TODO remove when supporting TIME and ELEVATION
@@ -443,7 +440,7 @@ enum ScalingPolicy {
     /**
      * Retrieve the {@link ScalingPolicy} from the provided {@link ScalingType}
      * @param scaling
-     * @return
+     *
      */
     public static ScalingPolicy getPolicy(ScalingType scaling) {
         if (scaling != null) {
@@ -472,40 +469,68 @@ enum ScalingPolicy {
      * supported one.
      *
      * @param scaling
-     * @return
+     *
      */
     public static int[] getTargetSize(ScalingType scaling) {
-        final ScaleToSizeType scaleType = scaling.getScaleToSize();
-        if (scaleType == null) {
+        if (scaling.getScaleToSize() != null) {
+            final ScaleToSizeType scaleType = scaling.getScaleToSize();
+            final EList<TargetAxisSizeType> targetAxisSizeElements = scaleType.getTargetAxisSize();
+    
+            TargetAxisSizeType xSize = null, ySize = null;
+            for (TargetAxisSizeType axisSizeType : targetAxisSizeElements) {
+                final String axisName = axisSizeType.getAxis();
+                if (axisName.equals("http://www.opengis.net/def/axis/OGC/1/i") || axisName.equals("i")) {
+                    xSize = axisSizeType;
+                } else if (axisName.equals("http://www.opengis.net/def/axis/OGC/1/j") || axisName.equals("j")) {
+                    ySize = axisSizeType;
+                } else {
+                    // TODO remove when supporting TIME and ELEVATION
+                    throw new WCS20Exception("Scale Axis Undefined",
+                            WCS20Exception.WCS20ExceptionCode.ScaleAxisUndefined, axisName);
+                }
+            }
+            final int sizeX = (int) xSize.getTargetSize();// TODO should this be int?
+            if (sizeX <= 0) {
+                throw new WCS20Exception("Invalid target size",
+                        WCS20Exception.WCS20ExceptionCode.InvalidExtent, Integer.toString(sizeX));
+            }
+            final int sizeY = (int) ySize.getTargetSize();// TODO should this be int?
+            if (sizeY <= 0) {
+                throw new WCS20Exception("Invalid target size",
+                        WCS20Exception.WCS20ExceptionCode.InvalidExtent, Integer.toString(sizeY));
+            }
+            return new int[] { sizeX, sizeY };
+        } else if (scaling.getScaleToExtent() != null) {
+            ScaleToExtentType ste = scaling.getScaleToExtent();
+            TargetAxisExtentType xSize = null, ySize = null;
+            for (TargetAxisExtentType axisSizeType : ste.getTargetAxisExtent()) {
+                final String axisName = axisSizeType.getAxis();
+                if (axisName.equals("http://www.opengis.net/def/axis/OGC/1/i") || axisName.equals("i")) {
+                    xSize = axisSizeType;
+                } else if (axisName.equals("http://www.opengis.net/def/axis/OGC/1/j") || axisName.equals("j")) {
+                    ySize = axisSizeType;
+                } else {
+                    // TODO remove when supporting TIME and ELEVATION
+                    throw new WCS20Exception("Scale Axis Undefined",
+                            WCS20Exception.WCS20ExceptionCode.ScaleAxisUndefined, axisName);
+                }
+            }
+            final int sizeX = (int) (xSize.getHigh() - xSize.getLow());// TODO should this be int?
+            if (sizeX <= 0) {
+                throw new WCS20Exception("Invalid target extent, high is greater than low",
+                        WCS20Exception.WCS20ExceptionCode.InvalidExtent, Integer.toString((int) xSize.getHigh()));
+            }
+            final int sizeY = (int) (ySize.getHigh() - ySize.getLow());
+            if (sizeY <= 0) {
+                throw new WCS20Exception("Invalid target extent, high is greater than low",
+                        WCS20Exception.WCS20ExceptionCode.InvalidExtent, Integer.toString((int) ySize.getHigh()));
+            }
+            return new int[] { sizeX, sizeY };
+
+        } else {
             throw new IllegalArgumentException("targe size can not be computed from this type of scaling: "
                     + getPolicy(scaling));
         }
-        final EList<TargetAxisSizeType> targetAxisSizeElements = scaleType.getTargetAxisSize();
-
-        TargetAxisSizeType xSize = null, ySize = null;
-        for (TargetAxisSizeType axisSizeType : targetAxisSizeElements) {
-            final String axisName = axisSizeType.getAxis();
-            if (axisName.equals("http://www.opengis.net/def/axis/OGC/1/i")) {
-                xSize = axisSizeType;
-            } else if (axisName.equals("http://www.opengis.net/def/axis/OGC/1/j")) {
-                ySize = axisSizeType;
-            } else {
-                // TODO remove when supporting TIME and ELEVATION
-                throw new WCS20Exception("Scale Axis Undefined",
-                        WCS20Exception.WCS20ExceptionCode.ScaleAxisUndefined, axisName);
-            }
-        }
-        final int sizeX = (int) xSize.getTargetSize();// TODO should this be int?
-        if (sizeX <= 0) {
-            throw new WCS20Exception("Invalid target size",
-                    WCS20Exception.WCS20ExceptionCode.InvalidExtent, Integer.toString(sizeX));
-        }
-        final int sizeY = (int) ySize.getTargetSize();// TODO should this be int?
-        if (sizeY <= 0) {
-            throw new WCS20Exception("Invalid target size",
-                    WCS20Exception.WCS20ExceptionCode.InvalidExtent, Integer.toString(sizeY));
-        }
-        return new int[] { sizeX, sizeY };
     }
 
     /**
@@ -516,7 +541,7 @@ enum ScalingPolicy {
      * supported one.
      *
      * @param scaling
-     * @return
+     *
      */
     public static double[] getScaleFactors(ScalingType scaling) {
         ScalingPolicy policy = getPolicy(scaling);
@@ -533,9 +558,9 @@ enum ScalingPolicy {
             yScale = null;
             for (ScaleAxisType scaleAxisType : targetAxisScaleElements) {
                 final String axisName = scaleAxisType.getAxis();
-                if (axisName.equals("http://www.opengis.net/def/axis/OGC/1/i")) {
+                if (axisName.equals("http://www.opengis.net/def/axis/OGC/1/i") || axisName.equals("i")) {
                     xScale = scaleAxisType;
-                } else if (axisName.equals("http://www.opengis.net/def/axis/OGC/1/j")) {
+                } else if (axisName.equals("http://www.opengis.net/def/axis/OGC/1/j") || axisName.equals("j")) {
                     yScale = scaleAxisType;
                 } else {
                     // TODO remove when supporting TIME and ELEVATION

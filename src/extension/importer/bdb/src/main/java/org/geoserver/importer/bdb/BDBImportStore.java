@@ -1,4 +1,4 @@
-/* (c) 2014 Open Source Geospatial Foundation - all rights reserved
+/* (c) 2014 - 2016 Open Source Geospatial Foundation - all rights reserved
  * (c) 2001 - 2013 OpenPlans
  * This code is licensed under the GPL 2.0 license, available at the root
  * application directory.
@@ -150,7 +150,7 @@ public class BDBImportStore implements ImportStore {
         // check for potential class incompatibilities and attempt recovery
         try {
             ImportContext context = iterator().next();
-            System.out.println(context);
+            LOGGER.fine(context.toString());
         } catch (RuntimeException re) {
             if (re.getCause() instanceof java.io.ObjectStreamException) {
                 LOGGER.warning("Unable to read import database, attempting recovery");

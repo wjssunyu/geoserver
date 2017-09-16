@@ -5,10 +5,7 @@
  */
 package org.geoserver.web.data.layergroup;
 
-import org.geoserver.catalog.Catalog;
-import org.geoserver.catalog.CatalogBuilder;
-import org.geoserver.catalog.FeatureTypeInfo;
-import org.geoserver.catalog.LayerGroupInfo;
+import org.geoserver.catalog.*;
 import org.geoserver.data.test.MockData;
 import org.geoserver.data.test.SystemTestData;
 import org.geoserver.web.GeoServerWicketTestSupport;
@@ -40,6 +37,26 @@ public abstract class LayerGroupBaseTest extends GeoServerWicketTestSupport {
         lg.getLayers().add(catalog.getLayerByName(bridges));
         lg.getStyles().add(catalog.getStyleByName(bridges));
         CatalogBuilder builder = new CatalogBuilder(catalog);
+        builder.calculateLayerGroupBounds(lg);
+        catalog.add(lg);
+        
+        WorkspaceInfo ws = catalog.getWorkspaceByName("cite");
+        LayerGroupInfo wslg = catalog.getFactory().createLayerGroup();
+      
+        wslg.setName("bridges");
+        wslg.setWorkspace(ws);
+        wslg.getLayers().add(catalog.getLayerByName(bridges));
+        wslg.getStyles().add(catalog.getStyleByName(bridges));
+        builder = new CatalogBuilder(catalog);
+        builder.calculateLayerGroupBounds(wslg);
+        catalog.add(wslg);
+
+        testData.addStyle("multiStyleGroup", "multiStyleGroup.sld", CatalogIntegrationTest.class, getCatalog());
+
+        lg = catalog.getFactory().createLayerGroup();
+        lg.setName("styleGroup");
+        lg.getLayers().add(null);
+        lg.getStyles().add(catalog.getStyleByName("multiStyleGroup"));
         builder.calculateLayerGroupBounds(lg);
         catalog.add(lg);
     }

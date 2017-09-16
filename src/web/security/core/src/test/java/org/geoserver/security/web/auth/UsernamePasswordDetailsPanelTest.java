@@ -1,4 +1,4 @@
-/* (c) 2014 Open Source Geospatial Foundation - all rights reserved
+/* (c) 2014 - 2016 Open Source Geospatial Foundation - all rights reserved
  * (c) 2001 - 2013 OpenPlans
  * This code is licensed under the GPL 2.0 license, available at the root
  * application directory.
@@ -71,7 +71,7 @@ public  class UsernamePasswordDetailsPanelTest extends AbstractSecurityNamedServ
         
         activatePanel();
         
-        assertEquals(1, countItmes());
+        assertEquals(1, countItems());
         assertNotNull(getSecurityNamedServiceConfig("default"));
         assertNull(getSecurityNamedServiceConfig("xxxxxxxx"));
         
@@ -87,7 +87,7 @@ public  class UsernamePasswordDetailsPanelTest extends AbstractSecurityNamedServ
         clickCancel();
         
         tester.assertRenderedPage(basePage.getClass());
-        assertEquals(1, countItmes());
+        assertEquals(1, countItems());
         assertNotNull(getSecurityNamedServiceConfig("default"));
         
         clickAddNew();
@@ -101,7 +101,7 @@ public  class UsernamePasswordDetailsPanelTest extends AbstractSecurityNamedServ
         
         
         tester.assertRenderedPage(basePage.getClass());
-        assertEquals(2, countItmes());        
+        assertEquals(2, countItems());        
         assertNotNull(getSecurityNamedServiceConfig("default"));
         
         UsernamePasswordAuthenticationProviderConfig authConfig=
@@ -164,6 +164,82 @@ public  class UsernamePasswordDetailsPanelTest extends AbstractSecurityNamedServ
         authConfig=(UsernamePasswordAuthenticationProviderConfig)
                 getSecurityManager().loadAuthenticationProviderConfig("default2");
         assertEquals("test",authConfig.getUserGroupServiceName());
+    }
+
+    @Test
+    public void testMultipleAuthProviders() throws Exception{
+        initializeForXML();
+        
+        activatePanel();
+        
+        assertNotNull(getSecurityNamedServiceConfig("default"));
+        assertNull(getSecurityNamedServiceConfig("xxxxxxxx"));
+        
+        // Test add 1
+        clickAddNew();
+        
+        tester.assertRenderedPage(SecurityNamedServiceNewPage.class);
+        setSecurityConfigClassName(UsernamePasswordAuthProviderPanelInfo.class);
+
+        newFormTester();
+        setSecurityConfigName("default_001");                        
+        setUGName("default");
+        clickCancel();
+        
+        tester.assertRenderedPage(basePage.getClass());
+        assertEquals(1, countItems());
+        assertNotNull(getSecurityNamedServiceConfig("default"));
+        
+        clickAddNew();
+        newFormTester();
+        setSecurityConfigClassName(UsernamePasswordAuthProviderPanelInfo.class);
+        newFormTester();
+        setSecurityConfigName("default_001");        
+        setUGName("default");        
+        tester.assertRenderedPage(SecurityNamedServiceNewPage.class);
+        clickSave();
+        
+        // Test add 2
+        clickAddNew();
+        
+        tester.assertRenderedPage(SecurityNamedServiceNewPage.class);
+        setSecurityConfigClassName(UsernamePasswordAuthProviderPanelInfo.class);
+
+        newFormTester();
+        setSecurityConfigName("default_002");                        
+        setUGName("default");
+        clickCancel();
+        
+        tester.assertRenderedPage(basePage.getClass());
+        assertEquals(2, countItems());
+        assertNotNull(getSecurityNamedServiceConfig("default"));
+        
+        clickAddNew();
+        newFormTester();
+        setSecurityConfigClassName(UsernamePasswordAuthProviderPanelInfo.class);
+        newFormTester();
+        setSecurityConfigName("default_002");        
+        setUGName("default");        
+        tester.assertRenderedPage(SecurityNamedServiceNewPage.class);
+        clickSave();
+        
+        // start test modify
+        clickNamedServiceConfig("default_001");
+        tester.assertRenderedPage(SecurityNamedServiceEditPage.class);
+        tester.debugComponentTrees();
+        newFormTester("panel:panel:form");
+        clickCancel();
+        tester.assertRenderedPage(basePage.getClass());
+        
+        clickNamedServiceConfig("default_002");
+        tester.assertRenderedPage(SecurityNamedServiceEditPage.class);
+        tester.debugComponentTrees();
+        newFormTester("panel:panel:form");
+        clickCancel();
+        tester.assertRenderedPage(basePage.getClass());
+
+        doRemove(null, "default_001");
+        doRemove(null, "default_002");
     }
 
     @Test

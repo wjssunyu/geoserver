@@ -5,8 +5,9 @@
  */
 package org.geoserver.config;
 
-import static org.geoserver.data.util.IOUtils.xStreamPersist;
+import static org.geoserver.config.util.XStreamUtils.xStreamPersist;
 
+import java.io.ByteArrayOutputStream;
 import java.io.File;
 import java.io.IOException;
 import java.io.InputStream;
@@ -19,6 +20,7 @@ import java.util.List;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 
+import org.apache.commons.io.FilenameUtils;
 import org.apache.commons.io.IOUtils;
 import org.geoserver.catalog.Catalog;
 import org.geoserver.catalog.CatalogException;
@@ -30,10 +32,15 @@ import org.geoserver.catalog.LayerGroupInfo;
 import org.geoserver.catalog.LayerInfo;
 import org.geoserver.catalog.NamespaceInfo;
 import org.geoserver.catalog.ResourceInfo;
+import org.geoserver.catalog.SLDHandler;
 import org.geoserver.catalog.StoreInfo;
+import org.geoserver.catalog.StyleHandler;
 import org.geoserver.catalog.StyleInfo;
+import org.geoserver.catalog.Styles;
 import org.geoserver.catalog.WMSLayerInfo;
 import org.geoserver.catalog.WMSStoreInfo;
+import org.geoserver.catalog.WMTSLayerInfo;
+import org.geoserver.catalog.WMTSStoreInfo;
 import org.geoserver.catalog.WorkspaceInfo;
 import org.geoserver.catalog.event.CatalogAddEvent;
 import org.geoserver.catalog.event.CatalogListener;
@@ -45,6 +52,7 @@ import org.geoserver.platform.GeoServerResourceLoader;
 import org.geoserver.platform.resource.Files;
 import org.geoserver.platform.resource.Resource;
 import org.geoserver.platform.resource.Resource.Type;
+import org.geoserver.platform.resource.Resources;
 import org.geotools.styling.AbstractStyleVisitor;
 import org.geotools.styling.ExternalGraphic;
 import org.geotools.styling.Style;
@@ -83,6 +91,9 @@ public class GeoServerPersister implements CatalogListener, ConfigurationListene
             else if ( source instanceof DataStoreInfo ) {
                 addDataStore( (DataStoreInfo) source );
             }
+            else if ( source instanceof WMTSStoreInfo ) {
+                addWMTSStore( (WMTSStoreInfo) source );
+            }
             else if ( source instanceof WMSStoreInfo ) {
                 addWMSStore( (WMSStoreInfo) source );
             }
@@ -97,6 +108,9 @@ public class GeoServerPersister implements CatalogListener, ConfigurationListene
             }
             else if ( source instanceof WMSLayerInfo ) {
                 addWMSLayer( (WMSLayerInfo) source );
+            }
+            else if ( source instanceof WMTSLayerInfo ) {
+                addWMTSLayer( (WMTSLayerInfo) source );
             }
             else if ( source instanceof LayerInfo ) {
                 addLayer( (LayerInfo) source );
@@ -167,15 +181,19 @@ public class GeoServerPersister implements CatalogListener, ConfigurationListene
                     WorkspaceInfo newWorkspace = (WorkspaceInfo) event.getNewValues().get( i );
                     Resource newDir = dd.getStyles(newWorkspace);
 
-                    //look for any resource files (image, etc...) and copy them over, don't move 
+                    // look for any resource files (image, etc...) and copy them over, don't move 
                     // since they could be shared among other styles
                     for (Resource old : dd.additionalStyleResources((StyleInfo) source)) {
-                        copyResToDir(old, newDir);
+                        if (old.getType() != Type.UNDEFINED){
+                            copyResToDir(old, newDir);
+                        }
                     }
 
                     //move over the config file and the sld
                     for (Resource old : baseResources((StyleInfo)source)) {
-                        moveResToDir(old, newDir);
+                        if (old.getType() != Type.UNDEFINED){
+                            moveResToDir(old, newDir);
+                        }
                     }
 
                 }
@@ -219,6 +237,9 @@ public class GeoServerPersister implements CatalogListener, ConfigurationListene
             else if ( source instanceof DataStoreInfo ) {
                 modifyDataStore( (DataStoreInfo) source );
             }
+            else if ( source instanceof WMTSStoreInfo ) {
+                modifyWMTSStore( (WMTSStoreInfo) source );
+            }
             else if ( source instanceof WMSStoreInfo ) {
                 modifyWMSStore( (WMSStoreInfo) source );
             }
@@ -236,6 +257,9 @@ public class GeoServerPersister implements CatalogListener, ConfigurationListene
             }
             else if ( source instanceof WMSLayerInfo ) {
                 modifyWMSLayer( (WMSLayerInfo) source );
+            }
+            else if ( source instanceof WMTSLayerInfo ) {
+                modifyWMTSLayer( (WMTSLayerInfo) source );
             }
             else if ( source instanceof LayerInfo ) {
                 modifyLayer( (LayerInfo) source );
@@ -272,6 +296,12 @@ public class GeoServerPersister implements CatalogListener, ConfigurationListene
             }
             else if ( source instanceof CoverageInfo ) {
                 removeCoverage( (CoverageInfo) source );
+            }
+            else if ( source instanceof WMTSStoreInfo ) {
+                removeWMTSStore( (WMTSStoreInfo) source );
+            }
+            else if ( source instanceof WMTSLayerInfo ) {
+                removeWMTSLayer( (WMTSLayerInfo) source );
             }
             else if ( source instanceof WMSStoreInfo ) {
                 removeWMSStore( (WMSStoreInfo) source );
@@ -371,7 +401,6 @@ public class GeoServerPersister implements CatalogListener, ConfigurationListene
     private void addWorkspace( WorkspaceInfo ws ) throws IOException {
         LOGGER.fine( "Persisting workspace " + ws.getName() );
         Resource xml = dd.config(ws);
-        ensureParent(xml);
         persist( ws, xml );
     }
     
@@ -397,14 +426,12 @@ public class GeoServerPersister implements CatalogListener, ConfigurationListene
     private void addNamespace( NamespaceInfo ns ) throws IOException {
         LOGGER.fine( "Persisting namespace " + ns.getPrefix() );
         Resource xml = dd.config(ns);
-        ensureParent(xml);
         persist( ns, xml );
     }
     
     private void modifyNamespace( NamespaceInfo ns) throws IOException {
         LOGGER.fine( "Persisting namespace " + ns.getPrefix() );
         Resource xml = dd.config(ns);
-        ensureParent(xml);
         persist( ns, xml );
     }
     
@@ -418,7 +445,6 @@ public class GeoServerPersister implements CatalogListener, ConfigurationListene
     private void addDataStore( DataStoreInfo ds ) throws IOException {
         LOGGER.fine( "Persisting datastore " + ds.getName() );
         Resource xml = dd.config(ds);
-        ensureParent(xml);
         persist( ds, xml );
     }
     
@@ -444,7 +470,6 @@ public class GeoServerPersister implements CatalogListener, ConfigurationListene
     private void addFeatureType( FeatureTypeInfo ft ) throws IOException {
         LOGGER.fine( "Persisting feature type " + ft.getName() );
         Resource xml = dd.config(ft);
-        ensureParent(xml);
         persist( ft, xml );
     }
     
@@ -470,7 +495,6 @@ public class GeoServerPersister implements CatalogListener, ConfigurationListene
     private void addCoverageStore( CoverageStoreInfo cs ) throws IOException {
         LOGGER.fine( "Persisting coverage store " + cs.getName() );
         Resource xml = dd.config(cs);
-        ensureParent(xml);
         persist( cs, xml );
     }
     
@@ -490,7 +514,6 @@ public class GeoServerPersister implements CatalogListener, ConfigurationListene
     private void addCoverage( CoverageInfo c ) throws IOException {
         LOGGER.fine( "Persisting coverage " + c.getName() );
         Resource xml = dd.config(c);
-        ensureParent(xml);
         persist( c, xml );
     }
     
@@ -510,7 +533,6 @@ public class GeoServerPersister implements CatalogListener, ConfigurationListene
     private void addWMSStore( WMSStoreInfo wmss ) throws IOException {
         LOGGER.fine( "Persisting wms store " + wmss.getName() );
         Resource xml = dd.config(wmss);
-        ensureParent(xml);
         persist(wmss, xml);
     }
     
@@ -530,7 +552,6 @@ public class GeoServerPersister implements CatalogListener, ConfigurationListene
     private void addWMSLayer( WMSLayerInfo wms ) throws IOException {
         LOGGER.fine( "Persisting wms layer " + wms.getName() );
         Resource xml = dd.config(wms);
-        ensureParent(xml);
         persist( wms, xml );
     }
     
@@ -546,11 +567,47 @@ public class GeoServerPersister implements CatalogListener, ConfigurationListene
         rmRes(directory);
     }
     
+  //wmts stores
+    private void addWMTSStore( WMTSStoreInfo wmss ) throws IOException {
+        LOGGER.fine( "Persisting wmts store " + wmss.getName() );
+        Resource xml = dd.config(wmss);
+        persist(wmss, xml);
+    }
+    
+    private void modifyWMTSStore( WMTSStoreInfo wmss ) throws IOException {
+        LOGGER.fine( "Persisting wmts store " + wmss.getName() );
+        Resource xml = dd.config(wmss);
+        persist(wmss, xml);
+    }
+    
+    private void removeWMTSStore( WMTSStoreInfo wmss ) throws IOException {
+        LOGGER.fine( "Removing  wmts datastore " + wmss.getName() );
+        Resource directory = dd.get(wmss);
+        rmRes(directory);
+    }
+    
+    //wmts layers
+    private void addWMTSLayer( WMTSLayerInfo wms ) throws IOException {
+        LOGGER.fine( "Persisting wmts layer " + wms.getName() );
+        Resource xml = dd.config(wms);
+        persist( wms, xml );
+    }
+    
+    private void modifyWMTSLayer( WMTSLayerInfo wms ) throws IOException {
+        LOGGER.fine( "Persisting wmts layer" + wms.getName() );
+        Resource xml = dd.config(wms);
+        persist( wms, xml );
+    }
+    
+    private void removeWMTSLayer( WMTSLayerInfo wms ) throws IOException {
+        LOGGER.fine( "Removing wms layer " + wms.getName() );
+        Resource directory = dd.get(wms);
+        rmRes(directory);
+    }
     //layers
     private void addLayer( LayerInfo l ) throws IOException {
         LOGGER.fine( "Persisting layer " + l.getName() );
         Resource xml = dd.config(l);
-        ensureParent(xml);
         persist( l, xml );
     }
     
@@ -570,29 +627,58 @@ public class GeoServerPersister implements CatalogListener, ConfigurationListene
     private void addStyle( StyleInfo s ) throws IOException {
         LOGGER.fine( "Persisting style " + s.getName() );
         Resource xml = dd.config(s);
-        ensureParent(xml);
         persist( s, xml );
     }
     
     private void renameStyle( StyleInfo s, String newName ) throws IOException {
-        LOGGER.fine( "Renameing style " + s.getName() + " to " + newName );
+        LOGGER.fine( "Renaming style " + s.getName() + " to " + newName );
+        
+        // rename xml configuration file
         Resource xml = dd.config(s);
         renameRes( xml, newName+".xml" );
         
+        // rename style definition file
         Resource style = dd.style(s);
-        String sldFileName = newName + ".sld";
-        Resource target = style.parent().get(sldFileName);
-        int i = 1;
-        while(target.getType()!=Type.UNDEFINED && i <= MAX_RENAME_ATTEMPTS) {
-            sldFileName = newName + i + ".sld";
-            target = style.parent().get(sldFileName);
+        StyleHandler format = Styles.handler( s.getFormat() );
+        
+        Resource target = uniqueResource( style, newName, format.getFileExtension() );
+        renameRes(style, target.name());
+        s.setFilename(target.name());
+        
+        // rename generated sld if appropriate
+        if( !SLDHandler.FORMAT.equals(format.getFormat())){
+            Resource sld = style.parent().get(FilenameUtils.getBaseName(style.name()) + ".sld");
+            if( sld.getType() == Type.RESOURCE ){
+                Resource generated = uniqueResource( sld, newName, "sld" );
+                renameRes(sld, generated.name());    
+            }
+        }
+    }
+    
+    /**
+     * Determine unique name of the form <code>newName.extension</code>. newName will
+     * have a number appended as required to produce a unique resource name.
+     * 
+     * @param resource Resource being renamed
+     * @param newName proposed name to use as a template
+     * @param extension extension
+     * @return New UNDEFINED resource suitable for use with rename
+     * @throws IOException If unique resource cannot be produced
+     */
+    private Resource uniqueResource(Resource resource, String newName, String extension)
+            throws IOException {
+        Resource target = resource.parent().get(newName + "." + extension);
+
+        int i = 0;
+        while (target.getType() != Type.UNDEFINED && ++i <= MAX_RENAME_ATTEMPTS) {
+            target = resource.parent().get(newName + i + "." + extension);
         }
         if (i > MAX_RENAME_ATTEMPTS) {
-            throw new IOException("All target files between " + newName + "1.sld and " + newName
-                    + MAX_RENAME_ATTEMPTS + ".sld are in use already, giving up");
+            throw new IOException("All target files between " + newName + "1." + extension
+                    + " and " + newName + MAX_RENAME_ATTEMPTS + "." + extension
+                    + " are in use already, giving up");
         }
-        renameRes(style, target.name());
-        s.setFilename(sldFileName);
+        return target;
     }
     
     private void modifyStyle( StyleInfo s ) throws IOException {
@@ -621,6 +707,17 @@ public class GeoServerPersister implements CatalogListener, ConfigurationListene
         LOGGER.fine( "Removing style " + s.getName() );
         Resource xml = dd.config(s);
         rmRes(xml);
+        
+        Resource sld = dd.style(s);
+        if (Resources.exists(sld)) {
+            Resource sldBackup = dd.get(sld.path() + ".bak");
+            int i = 1;
+            while (Resources.exists(sldBackup)) {
+                sldBackup = dd.get(sld.path() + ".bak." + i++);
+            }
+            LOGGER.fine( "Removing the SLD as well but making backup " + sldBackup.name());
+            sld.renameTo(sldBackup);
+        }
     }
 
     /*
@@ -672,7 +769,6 @@ public class GeoServerPersister implements CatalogListener, ConfigurationListene
     private void addLayerGroup( LayerGroupInfo lg ) throws IOException {
         LOGGER.fine( "Persisting layer group " + lg.getName() );
         Resource xml = dd.config(lg);
-        ensureParent(xml);
         persist(lg, xml);
     }
     
@@ -697,7 +793,9 @@ public class GeoServerPersister implements CatalogListener, ConfigurationListene
     private void persist( Object o, Resource r ) throws IOException {
         try {
             synchronized ( xp ) {
-                xStreamPersist(r, o, xp);
+                ByteArrayOutputStream bos = new ByteArrayOutputStream();
+                xp.save(o, bos);
+                r.setContents(bos.toByteArray());
             }
             LOGGER.fine("Persisted " + o.getClass().getName() + " to " + r.path() );
         }
@@ -724,9 +822,6 @@ public class GeoServerPersister implements CatalogListener, ConfigurationListene
             OutputStream out = newR.out()){
             IOUtils.copy(in, out);
         }
-    }
-    private void ensureParent(Resource r) {
-        r.parent().dir();
     }
     
     private Resource uriToResource(Resource base, URI uri) throws MalformedURLException {

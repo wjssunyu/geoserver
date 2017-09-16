@@ -1,4 +1,4 @@
-/* (c) 2014 Open Source Geospatial Foundation - all rights reserved
+/* (c) 2014 - 2015 Open Source Geospatial Foundation - all rights reserved
  * (c) 2001 - 2013 OpenPlans
  * This code is licensed under the GPL 2.0 license, available at the root
  * application directory.
@@ -43,7 +43,7 @@ public interface WebProcessingService {
      * Returns the status of a given process execution, either as a {@link ExecuteResponseType} or
      * as a stored response File
      * @param request
-     * @return
+     *
      * @throws WPSException
      */
     Object getExecutionStatus(GetExecutionStatusType request) throws WPSException;
@@ -61,7 +61,7 @@ public interface WebProcessingService {
      * Returns a output stored as a reference in the specified execution
      * 
      * @param request
-     * @return
+     *
      * @throws WPSException
      */
     Resource getExecutionResult(GetExecutionResultType request) throws WPSException;
@@ -70,8 +70,14 @@ public interface WebProcessingService {
      * Dismisses the execution of a currently running process
      * 
      * @param request
-     * @return
+     *
      * @throws WPSException
      */
     ExecuteResponseType dismiss(DismissType request) throws WPSException;
+
+    /**
+     * WPS service configuration.
+     */
+    WPSInfo getServiceInfo();
+
 }

@@ -1,4 +1,4 @@
-/* (c) 2014 Open Source Geospatial Foundation - all rights reserved
+/* (c) 2014 - 2016 Open Source Geospatial Foundation - all rights reserved
  * (c) 2001 - 2013 OpenPlans
  * This code is licensed under the GPL 2.0 license, available at the root
  * application directory.
@@ -13,18 +13,10 @@ import java.util.Iterator;
 import java.util.LinkedList;
 import java.util.List;
 import java.util.Map;
-import java.util.Set;
 import java.util.logging.Logger;
 
 import javax.xml.namespace.QName;
 
-import net.opengis.wfs.InsertElementType;
-import net.opengis.wfs.InsertedFeatureType;
-import net.opengis.wfs.TransactionResponseType;
-import net.opengis.wfs.TransactionType;
-import net.opengis.wfs.WfsFactory;
-
-import org.eclipse.emf.ecore.EObject;
 import org.geoserver.catalog.FeatureTypeInfo;
 import org.geoserver.config.GeoServer;
 import org.geoserver.feature.ReprojectingFeatureCollection;
@@ -34,11 +26,11 @@ import org.geoserver.wfs.request.TransactionRequest;
 import org.geoserver.wfs.request.TransactionResponse;
 import org.geotools.data.DataUtilities;
 import org.geotools.data.FeatureStore;
+import org.geotools.data.collection.ListFeatureCollection;
 import org.geotools.data.simple.SimpleFeatureCollection;
 import org.geotools.data.simple.SimpleFeatureIterator;
 import org.geotools.data.simple.SimpleFeatureStore;
 import org.geotools.factory.Hints;
-import org.geotools.feature.DefaultFeatureCollection;
 import org.geotools.geometry.jts.JTS;
 import org.geotools.referencing.operation.projection.PointOutsideEnvelopeException;
 import org.opengis.feature.simple.SimpleFeature;
@@ -81,7 +73,7 @@ public class InsertElementHandler extends AbstractTransactionElementHandler {
         TransactionResponse response, TransactionListener listener) throws WFSTransactionException {
         
         Insert insert = (Insert) element;
-        LOGGER.finer("Transasction Insert:" + insert);
+        LOGGER.finer("Transaction Insert:" + insert);
 
         long inserted = response.getTotalInserted().longValue();
 
@@ -94,11 +86,11 @@ public class InsertElementHandler extends AbstractTransactionElementHandler {
             for (Iterator f = featureList.iterator(); f.hasNext();) {
                 SimpleFeature feature = (SimpleFeature) f.next();
                 SimpleFeatureType schema = feature.getFeatureType();
-                DefaultFeatureCollection collection = 
-                    (DefaultFeatureCollection) schema2features.get(schema);
+                ListFeatureCollection collection =
+                    (ListFeatureCollection) schema2features.get(schema);
 
                 if (collection == null) {
-                    collection = new DefaultFeatureCollection(null, schema);
+                    collection = new ListFeatureCollection(schema);
                     schema2features.put(schema, collection);
                 }
 
@@ -143,7 +135,7 @@ public class InsertElementHandler extends AbstractTransactionElementHandler {
                     final GeometryDescriptor defaultGeometry = store.getSchema().getGeometryDescriptor();
                     if(defaultGeometry != null) {
                         CoordinateReferenceSystem target = defaultGeometry.getCoordinateReferenceSystem();
-                        if (target != null) {
+                        if (target != null /* && !CRS.equalsIgnoreMetadata(collection.getSchema().getCoordinateReferenceSystem(), target) */) {
                             collection = new ReprojectingFeatureCollection(collection, target);
                         }
                     }
@@ -151,7 +143,7 @@ public class InsertElementHandler extends AbstractTransactionElementHandler {
                     // Need to use the namespace here for the
                     // lookup, due to our weird
                     // prefixed internal typenames. see
-                    // http://jira.codehaus.org/secure/ViewIssue.jspa?key=GEOS-143
+                    // https://osgeo-org.atlassian.net/browse/GEOS-143
 
                     // Once we get our datastores making features
                     // with the correct namespaces
@@ -268,7 +260,7 @@ public class InsertElementHandler extends AbstractTransactionElementHandler {
                 typeNames.add(new QName(namespaceURI, name));
             }
         } else {
-            LOGGER.finer("Insert was empty - does not need a FeatuerSoruce");
+            LOGGER.finer("Insert was empty - does not need a FeatureSource");
         }
 
         return (QName[]) typeNames.toArray(new QName[typeNames.size()]);

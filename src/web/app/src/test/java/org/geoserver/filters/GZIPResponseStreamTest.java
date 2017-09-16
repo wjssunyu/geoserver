@@ -1,4 +1,4 @@
-/* (c) 2014 Open Source Geospatial Foundation - all rights reserved
+/* (c) 2014 - 2016 Open Source Geospatial Foundation - all rights reserved
  * (c) 2001 - 2013 OpenPlans
  * This code is licensed under the GPL 2.0 license, available at the root
  * application directory.
@@ -15,12 +15,13 @@ import java.util.ArrayList;
 import java.util.zip.GZIPInputStream;
 
 import javax.servlet.ServletOutputStream;
+import javax.servlet.WriteListener;
 import javax.servlet.http.HttpServletResponse;
 import javax.servlet.http.HttpServletResponseWrapper;
 
 import org.junit.Test;
 
-import com.mockrunner.mock.web.MockHttpServletResponse;
+import org.springframework.mock.web.MockHttpServletResponse;
 
 public class GZIPResponseStreamTest  {
     
@@ -60,6 +61,15 @@ public class GZIPResponseStreamTest  {
         public byte[] toByteArray(){
             return bos.toByteArray();
         }
+
+        public boolean isReady() {
+            return true;
+        }
+
+        public void setWriteListener(WriteListener writeListener) {
+            
+        }
+
     }
 
     private static class ByteStreamCapturingHttpServletResponse 

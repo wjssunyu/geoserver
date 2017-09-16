@@ -3,13 +3,13 @@
 GeoServer Improvement Proposals
 ===============================
 
-GeoServer Improvements Proposals (GSIP) are the formal mechanism used to manage
-any sort of major change to GeoServer. Examples of changes which are managed by
+GeoServer Improvements Proposals (GSIP) are the formal mechanism used to manage major changes to GeoServer in a responsible fashion. Examples of changes which are managed by
 the GSIP process include:
 
 * major features
 * code re-architecture
 * community process improvements
+* upgrading key dependencies
 * intellectual property
 
 How a GSIP works
@@ -24,41 +24,24 @@ The typical life cycle of a GSIP is as follows:
 #. The PSC votes on the GSIP
 #. Developer commits changes upon receiving a positive vote
 
-Voting on a GSIP
-----------------
-
-One of the duties of the GeoServer Project Steering Committee is to vote on 
-GSIPs. The voting process works as follows:
-
-* Each PSC member gets a single vote, which can be one of +1, -1, 0
-* Any PSC member that votes negatively against a proposal must provide a
-  reasonable explanation as to why
-* Any PSC member that votes negatively against a proposal has a limited time to
-  provide constructive feedback as to how the vote can be turned
-* The GSIP author must incorporate any reasonable feedback into the proposal
-* Any negative vote is reviewed to determine if criteria has been met to turn
-  it to a positive vote
-* The proposal is considered successful after a majority of positive votes is 
-  a achieved **and** all feedback from any negative votes has been addressed
-
-Implementing a GSIP
--------------------
+Writing a GSIP
+--------------
    
 GSIPs are written up on the 
-`Proposals <https://github.com/geoserver/geoserver.github.io/wiki/Proposals>`_ wiki page.
+`Proposals <https://github.com/geoserver/geoserver/wiki/Proposals>`_ wiki page.
 
 If you have write access login and follow the steps below. If you do not have write access GitHub will automatically create a fork for you as you edit individual pages.
 
 To make a GSIP:
 
-#. Navigate to the wiki: https://github.com/geoserver/geoserver.github.io/wiki
-#. Select and copy the proposal template to your clipboard.
-#. Navigate to the proposals page: https://github.com/geoserver/geoserver.github.io/wiki/Proposals
+#. Navigate to the wiki: https://github.com/geoserver/geoserver/wiki/
+#. Select and copy the proposal template to your clipboard. (Template is available `here <https://github.com/geoserver/geoserver/wiki/GSIP-XXXX>`_)
+#. Navigate to the proposals page: https://github.com/geoserver/geoserver/wiki/Proposals
 #. Edit the page with a new link under *Proposals Under Discussion*:
    
-   ````
+   ```
    [GSIP 116 - Use Apache Style Contributor Agreement](GSIP 116)
-   ````
+   ```
  
    #. The number should be the next "available" GSIP number.
    #. The title should be short and descriptive
@@ -67,7 +50,48 @@ To make a GSIP:
 #. Click on your new link to create the page, fill in the page contents by pasting the proposal page template from your clipboard.
 #. Fill in the information in the page template, and click ``Save`` when
    complete.
+   
+Voting on a GSIP
+----------------
 
+One of the duties of the GeoServer Project Steering Committee is to vote on 
+GSIPs. The voting process works as follows:
+
+* Each active PSC member gets a single vote, which can be one of "+1", "+0", "0", "-0", or "-1":
+
+    * A vote of "+1" means support for a proposal
+
+    * The neutral votes "+0", "0", and "-0" all count the same as "0" but permit PSC members
+      to indicate a slight tendency for, neutral, or against a proposal respectively
+
+    * A vote of "-1" means opposition to  a proposal
+
+* Voting remains open for seven days or until all active PSC members have cast their vote
+
+* Any active PSC member can during these seven days request an extension of voting for
+  an additional seven days; the voting period can only be extended once
+
+* Any PSC member who votes "-1" against a proposal must provide a
+  reasonable explanation as to why
+
+* Any PSC member who votes "-1" against a proposal has a limited time to
+  provide constructive feedback as to how the vote can be turned
+
+* The GSIP author must incorporate any reasonable feedback into the proposal
+
+* PSC members who voted "-1" consider whether their feedback has been addressed
+  and whether they wish to change their vote
+
+* Only active PSC members are counted for determining vote percentages
+
+* A GSIP is accepted if it receives:
+
+    * at least 30% "+1" votes, and
+
+    * a quorum of at least 50% "+1"/"+0"/"0"/"-0" votes, and
+
+    * no "-1" votes (or all feedback from any "-1" votes has been addressed
+      and any "-1" voters have changed their votes)
 
 GSIP FAQ
 --------

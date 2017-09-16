@@ -1,4 +1,4 @@
-/* (c) 2014 Open Source Geospatial Foundation - all rights reserved
+/* (c) 2014 - 2015 Open Source Geospatial Foundation - all rights reserved
  * (c) 2001 - 2013 OpenPlans
  * This code is licensed under the GPL 2.0 license, available at the root
  * application directory.
@@ -6,9 +6,8 @@
 package org.geoserver.catalog;
 
 import java.io.IOException;
-import java.util.List;
-
 import org.geotools.styling.Style;
+import org.geotools.styling.StyledLayerDescriptor;
 import org.geotools.util.Version;
 
 /**
@@ -34,6 +33,11 @@ public interface StyleInfo extends CatalogInfo {
      * Name of the default raster style. 
      */
     public static String DEFAULT_RASTER = "raster";
+
+    /**
+     * Name of the default generic style.
+     */
+    public static String DEFAULT_GENERIC = "generic";
 
     
     /**
@@ -110,5 +114,32 @@ public interface StyleInfo extends CatalogInfo {
      * The style object.
      */
     Style getStyle() throws IOException;
+
+    /**
+     * The full sld object (which contains the style).
+     */
+    StyledLayerDescriptor getSLD() throws IOException;
+
+    /**
+     * The Legend for the style.
+     */
+    LegendInfo getLegend();
+
+    /**
+     * Sets the Legend for the style.
+     */
+    void setLegend(LegendInfo legend);
+    
+    /**
+     * The derived prefixed name.
+     * <p>
+     * If a workspace is set this method returns:
+     * <pre>
+     *   getWorkspace().getName() + ":" + getName();
+     * </pre>
+     * Otherwise it simply returns: <pre>getName()</pre>
+     * </p>
+     */
+    String prefixedName();
     
 }

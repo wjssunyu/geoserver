@@ -1,4 +1,4 @@
-/* (c) 2014 Open Source Geospatial Foundation - all rights reserved
+/* (c) 2014 - 2016 Open Source Geospatial Foundation - all rights reserved
  * (c) 2001 - 2013 OpenPlans
  * This code is licensed under the GPL 2.0 license, available at the root
  * application directory.
@@ -6,22 +6,29 @@
 package org.geoserver.wms.legendgraphic;
 
 import java.awt.Color;
-import java.awt.Font;
 import java.awt.Graphics2D;
 import java.awt.RenderingHints;
-import java.awt.geom.Rectangle2D;
 import java.awt.image.BufferedImage;
 import java.awt.image.IndexColorModel;
 import java.awt.image.RenderedImage;
+import java.io.IOException;
+import java.net.MalformedURLException;
+import java.net.URL;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
-import java.util.Locale;
 import java.util.Map;
+import java.util.logging.Level;
+import java.util.logging.Logger;
 
+import javax.imageio.ImageIO;
+
+import org.geoserver.catalog.LegendInfo;
+import org.geoserver.platform.GeoServerExtensions;
 import org.geoserver.platform.ServiceException;
 import org.geoserver.wms.GetLegendGraphicRequest;
+import org.geoserver.wms.GetLegendGraphicRequest.LegendRequest;
 import org.geoserver.wms.map.ImageUtils;
 import org.geotools.coverage.grid.GridCoverage2D;
 import org.geotools.data.DataUtilities;
@@ -40,7 +47,6 @@ import org.geotools.renderer.lite.RendererUtilities;
 import org.geotools.renderer.lite.StyledShapePainter;
 import org.geotools.renderer.style.SLDStyleFactory;
 import org.geotools.renderer.style.Style2D;
-import org.geotools.styling.Description;
 import org.geotools.styling.FeatureTypeStyle;
 import org.geotools.styling.LineSymbolizer;
 import org.geotools.styling.PointSymbolizer;
@@ -67,7 +73,7 @@ import org.opengis.filter.FilterFactory;
 import org.opengis.filter.expression.Expression;
 import org.opengis.filter.expression.Literal;
 import org.opengis.style.GraphicLegend;
-import org.opengis.util.InternationalString;
+import org.springframework.util.StringUtils;
 
 import com.vividsolutions.jts.geom.Coordinate;
 import com.vividsolutions.jts.geom.Geometry;
@@ -79,10 +85,8 @@ import com.vividsolutions.jts.geom.Polygon;
 
 /**
  * Template {@linkPlain org.vfny.geoserver.responses.wms.GetLegendGraphicProducer} based on
- * GeoTools' {@link GeoTools' {@link http
- * ://svn.geotools.org/geotools/trunk/gt/module/main/src/org/geotools
- * /renderer/lite/StyledShapePainter.java StyledShapePainter} that produces a BufferedImage with the
- * appropriate legend graphic for a given GetLegendGraphic WMS request.
+ * <a href="http://svn.geotools.org/geotools/trunk/gt/module/main/src/org/geotools/renderer/lite/StyledShapePainter.java"> GeoTools StyledShapePainter</a>
+ * that produces a BufferedImage with the appropriate legend graphic for a given GetLegendGraphic WMS request.
  * 
  * <p>
  * It should be enough for a subclass to implement {@linkPlain
@@ -106,6 +110,7 @@ import com.vividsolutions.jts.geom.Polygon;
  * @version $Id$
  */
 public class BufferedImageLegendGraphicBuilder {
+    Logger LOGGER = Logger.getLogger("org.geoserver.wms.legendgraphic");
 
     /** Tolerance used to compare doubles for equality */
     public static final double TOLERANCE = 1e-6;
@@ -158,7 +163,7 @@ public class BufferedImageLegendGraphicBuilder {
      *            the "parsed" request, where "parsed" means that it's values are already validated
      *            so this method must not take care of verifying the requested layer exists and the
      *            like.
-     * @return
+     *
      * 
      * @throws ServiceException
      *             if there are problems creating a "sample" feature instance for the FeatureType
@@ -171,10 +176,7 @@ public class BufferedImageLegendGraphicBuilder {
         List<RenderedImage> layersImages=new ArrayList<RenderedImage>();
         
         
-        List<FeatureType> layers=request.getLayers();
-        List<Style> styles=request.getStyles();
-        List<String> rules=request.getRules();
-        
+        List<LegendRequest> layers = request.getLegends();
         
         boolean forceLabelsOn = false;
         boolean forceLabelsOff = false;
@@ -194,27 +196,24 @@ public class BufferedImageLegendGraphicBuilder {
                 forceTitlesOff = true;
             }
         }
+
+        FeatureCountProcessor countProcessor = null;
+        if(Boolean.TRUE.equals(request.getLegendOption(GetLegendGraphicRequest.COUNT_MATCHED_KEY, Boolean.class))) {
+            countProcessor = new FeatureCountProcessor(request);
+        }
         
-        for (int pos = 0; pos < layers.size(); pos++) {
-            // current layer
-            FeatureType layer=layers.get(pos);
+        for(LegendRequest legend : layers ){
+            FeatureType layer=legend.getFeatureType();
             
-            // style and rule to use for the current layer
-            Style gt2Style = styles.get(pos);
-            String ruleName = null;
-            
+            // style and rule to use for the current layer            
+            Style gt2Style = legend.getStyle();
             if (gt2Style == null) {
                 throw new NullPointerException("request.getStyle()");
             }
-                        
+            
             // get rule corresponding to the layer index
-            if(rules.size() > 0) {
-                ruleName = rules.get(pos);
-            }
             // normalize to null for NO RULE
-            if(ruleName != null && ruleName.equals("")) {
-                ruleName = null;
-            }
+            String ruleName = legend.getRule(); // was null            
             
             // width and height, we might have to rescale those in case of DPI usage            
             int w = request.getWidth();
@@ -245,7 +244,7 @@ public class BufferedImageLegendGraphicBuilder {
             RenderedImage titleImage=null;
             // if we have more than one layer, we put a title on top of each layer legend
             if(layers.size() > 1 && !forceTitlesOff) {
-                titleImage=getLayerTitle(layer,  w, h, transparent, request);
+                titleImage=getLayerTitle(legend,  w, h, transparent, request);
             }
             
             // Check for rendering transformation
@@ -279,21 +278,33 @@ public class BufferedImageLegendGraphicBuilder {
             		(!strict && layer == null && LegendUtils.checkRasterSymbolizer(gt2Style)) || 
             		(LegendUtils.checkGridLayer(layer) && !hasVectorTransformation) || 
             		hasRasterTransformation;
-            		                   
+            
+            // Just checks LegendInfo currently, should check gtStyle
+            final boolean useProvidedLegend = layer != null && legend.getLayerInfo() != null;
+                    
+            RenderedImage legendImage = null;
+            if (useProvidedLegend) {
+                legendImage = getLayerLegend(legend, w, h, transparent, request);                
+            }
+            
             if (buildRasterLegend) {
                 final RasterLayerLegendHelper rasterLegendHelper = new RasterLayerLegendHelper(request,gt2Style,ruleName);
                 final BufferedImage image = rasterLegendHelper.getLegend();
                 if(image != null) {
                     if(titleImage != null) {
+                        layersImages.add(titleImage);
+                    }
+                    layersImages.add(image);
+                }
+            }
+            else if (useProvidedLegend && legendImage!=null) {
+                if (titleImage != null) {
                     layersImages.add(titleImage);
                 }
-                layersImages.add(image);
-                }                
-            } else {
-                
+                layersImages.add(legendImage);
+            } else {                
                 final Feature sampleFeature;
                 if (layer == null || hasVectorTransformation) {
-
                     sampleFeature = createSampleFeature();
                 } else {                    
                     sampleFeature = createSampleFeature(layer);
@@ -302,8 +313,7 @@ public class BufferedImageLegendGraphicBuilder {
                         new FeatureTypeStyle[0]);
                 final double scaleDenominator = request.getScale();
                 
-                final Rule[] applicableRules;
-                
+                Rule[] applicableRules;
                 if (ruleName != null) {
                     Rule rule = LegendUtils.getRule(ftStyles, ruleName);
                     if (rule == null) {
@@ -312,6 +322,11 @@ public class BufferedImageLegendGraphicBuilder {
                     applicableRules = new Rule[] {rule};
                 } else {
                     applicableRules = LegendUtils.getApplicableRules(ftStyles, scaleDenominator);
+                }
+                
+                // do we have to alter the style to do context sensitive feature counts?
+                if(countProcessor != null && !forceLabelsOff) {
+                    applicableRules = updateRuleTitles(countProcessor, legend, applicableRules);
                 }
                 
                 final NumberRange<Double> scaleRange = NumberRange.create(scaleDenominator,
@@ -358,10 +373,10 @@ public class BufferedImageLegendGraphicBuilder {
                     
                     FilterFactory ff = CommonFactoryFinder.getFilterFactory();
                     final Symbolizer[] symbolizers = applicableRules[i].getSymbolizers();
-                    final GraphicLegend legend = applicableRules[i].getLegend();
+                    final GraphicLegend graphic = applicableRules[i].getLegend();
                     
                     // If this rule has a legend graphic defined in the SLD, use it
-                    if (legend != null) {
+                    if (graphic != null) {
                         if (this.samplePoint == null) {
                             Coordinate coord = new Coordinate(w / 2, h / 2);
 
@@ -371,7 +386,7 @@ public class BufferedImageLegendGraphicBuilder {
                                 this.samplePoint = null;
                             }
                         }
-                        shapePainter.paint(graphics, this.samplePoint, legend, scaleDenominator, false);
+                        shapePainter.paint(graphics, this.samplePoint, graphic, scaleDenominator, false);
 
                     } else {
 
@@ -415,23 +430,32 @@ public class BufferedImageLegendGraphicBuilder {
                     legendsStack.add(image);
                     graphics.dispose();
                 }
-                
-                // JD: changed legend behavior, see GEOS-812
-                // this.legendGraphic = scaleImage(mergeLegends(legendsStack), request);
-                BufferedImage image = mergeLegends(legendsStack, applicableRules, request, 
-                        forceLabelsOn, forceLabelsOff);
-                if(image != null) {
-                    layersImages.add(image);
+                int labelMargin = 3;
+                if(!StringUtils.isEmpty(request.getLegendOptions().get("labelMargin"))) {
+                    labelMargin = Integer.parseInt(request.getLegendOptions().get("labelMargin").toString());
+                }
+                LegendMerger.MergeOptions options = LegendMerger.MergeOptions.createFromRequest(legendsStack, 0, 0, 0, labelMargin, request, forceLabelsOn, forceLabelsOff);
+                if(ruleCount > 0) {
+                    BufferedImage image = LegendMerger.mergeLegends(applicableRules, request, options); 
+                            
+                    if(image != null) {
+                        layersImages.add(image);
+                    }
                 }
             }
             
         }
         // all legend graphics are merged if we have a layer group
-        BufferedImage finalLegend = mergeLegends(layersImages,null,request, forceLabelsOn, forceLabelsOff);
+        BufferedImage finalLegend = mergeGroups(layersImages,null,request, forceLabelsOn, forceLabelsOff);
         if(finalLegend == null) {
             throw new IllegalArgumentException("no legend passed");
         }
         return finalLegend;
+    }
+
+    protected Rule[] updateRuleTitles(FeatureCountProcessor processor, LegendRequest legend,
+            Rule[] applicableRules) {
+        return processor.preProcessRules(legend, applicableRules);
     }
 
     /**
@@ -461,7 +485,7 @@ public class BufferedImageLegendGraphicBuilder {
      *              (if null a sample Feature will be created from featureType)
      * @param rules set of rules to scan for symbols
      * @param minimumSymbolSize lower constraint for the symbols size
-     * @return
+     *
      */
     private double calcSymbolScale(int width, int height, FeatureType featureType,
             Feature feature, final Rule[] rules, double minimumSymbolsSize) {
@@ -534,7 +558,7 @@ public class BufferedImageLegendGraphicBuilder {
      *        input
      * @param sample feature sample to be returned as is in output, if defined
      * @param rule rule containing symbolizers to scan for max dimensionality
-     * @return
+     *
      */
     private Feature getSampleFeatureForRule(FeatureType featureType,
             Feature sample, final Rule rule) {
@@ -562,63 +586,86 @@ public class BufferedImageLegendGraphicBuilder {
     /**
      * Renders a title for a layer (to be put on top of the layer legend).
      * 
-     * @param layer FeatureType representing the layer
+     * @param legend FeatureType representing the layer
      * @param w width for the image (hint)
      * @param h height for the image (hint)
      * @param transparent (should the image be transparent)
      * @param request GetLegendGraphicRequest being built
      * @return image with the title
      */
-    private RenderedImage getLayerTitle(FeatureType layer, int w, int h, boolean transparent, 
+    private RenderedImage getLayerTitle(LegendRequest legend, int w, int h, boolean transparent, 
             GetLegendGraphicRequest request) {
-        // we choose a title with the following priority:
-        //  - layer title
-        //  - layer name
-        String title=request.getTitle(layer.getName());
-        if (title == null) {
-            title=layer.getName().getLocalPart();
-        }
+        String title=legend.getTitle();
         final BufferedImage image = ImageUtils.createImage(w, h, (IndexColorModel) null,
                 transparent);
-        return getRenderedLabel(image,title,request);
+        return LegendMerger.getRenderedLabel(image,title, request);
     }
    
-
     /**
-     * Renders a label on the given image, using parameters from the request
-     * for the rendering style.
+     * Extracts legend for layer based on LayerInfo configuration or style LegendGraphics.
      * 
-     * @param image
-     * @param label
-     * @param request
-     * @return
+     * @param published FeatureType representing the layer
+     * @param w width for the image (hint)
+     * @param h height for the image (hint)
+     * @param transparent (should the image be transparent)
+     * @param request GetLegendGraphicRequest being built
+     * @return image with the title
      */
-    private BufferedImage getRenderedLabel(BufferedImage image, String label,
+    private RenderedImage getLayerLegend(LegendRequest legend, int w, int h, boolean transparent, 
             GetLegendGraphicRequest request) {
-        Font labelFont = LegendUtils.getLabelFont(request);
-        boolean useAA = LegendUtils.isFontAntiAliasing(request);
-                        
-        final Graphics2D graphics = image.createGraphics();
-        graphics.setFont(labelFont);
-        if(useAA) {
-            graphics.setRenderingHint(RenderingHints.KEY_TEXT_ANTIALIASING,
-                    RenderingHints.VALUE_TEXT_ANTIALIAS_ON);
-        } else {
-            graphics.setRenderingHint(RenderingHints.KEY_TEXT_ANTIALIASING,
-                    RenderingHints.VALUE_TEXT_ANTIALIAS_OFF);
+        
+        LegendInfo legendInfo = legend.getLegendInfo();
+        if (legendInfo == null) {
+            return null; // nothing provided will need to dynamically generate            
         }
-        return LegendUtils.renderLabel(label, graphics, request);
+        String onlineResource = legendInfo.getOnlineResource();
+        if( onlineResource == null || onlineResource.isEmpty() ){
+            return null;  // nothing provided will need to dynamically generate
+        }
+        URL url = null;
+        try {
+            url = new URL( onlineResource );            
+        }
+        catch(MalformedURLException invalid){
+            LOGGER.fine( "Unable to obtain "+onlineResource );
+            return null; // should log this!
+        }
+        try {
+            BufferedImage image = ImageIO.read(url);
+            
+            if( image.getWidth() == w && image.getHeight() == h ){
+                return image;
+            }
+            final BufferedImage rescale = ImageUtils.createImage(w, h, (IndexColorModel) null,true);
+            
+            Graphics2D g = (Graphics2D) rescale.getGraphics();
+            g.setColor(new Color(255,255,255,0));
+            g.fillRect(0, 0, w, h);
+            
+            double aspect = ((double)h)/((double)image.getHeight());
+            int legendWidth = (int)(aspect*((double)image.getWidth()));
+            
+            g.drawImage(image, 0, 0, legendWidth, h, null);
+            g.dispose();
+            
+            return rescale;
+        }
+        catch(IOException notFound){
+            LOGGER.log(Level.FINE, "Unable to legend graphic:"+url, notFound );
+            return null; // unable to access image
+        }
     }
-
+    
     /**
-     * Receives a list of <code>BufferedImages</code> and produces a new one which holds all the
-     * images in <code>imageStack</code> one above the other, handling labels.
+     * Receives a list of <code>BufferedImages</code> and produces a new one
+     * which holds all the images in <code>imageStack</code> one above the
+     * other, handling labels.
      * 
      * @param imageStack
      *            the list of BufferedImages, one for each applicable Rule
      * @param rules
-     *            The applicable rules, one for each image in the stack (if not null it's used to
-     *            compute labels)
+     *            The applicable rules, one for each image in the stack (if not
+     *            null it's used to compute labels)
      * @param request
      *            The request.
      * @param forceLabelsOn
@@ -631,149 +678,13 @@ public class BufferedImageLegendGraphicBuilder {
      * @throws IllegalArgumentException
      *             if the list is empty
      */
-    private BufferedImage mergeLegends(List<RenderedImage> imageStack, Rule[] rules,
-            GetLegendGraphicRequest req, boolean forceLabelsOn, boolean forceLabelsOff) {
+    private BufferedImage mergeGroups(List<RenderedImage> imageStack, Rule[] rules, GetLegendGraphicRequest req,
+            boolean forceLabelsOn, boolean forceLabelsOff) {
+        LegendMerger.MergeOptions options = LegendMerger.MergeOptions.createFromRequest(imageStack, 0, 0, 0, 0, req, forceLabelsOn, forceLabelsOff);
+        options.setLayout(LegendUtils.getGroupLayout(req));
+        return LegendMerger.mergeGroups(rules, options);
 
-        Font labelFont = LegendUtils.getLabelFont(req);
-        boolean useAA = LegendUtils.isFontAntiAliasing(req);
-
-        
-
-        if (imageStack.size() == 0) {
-            return null;
-        }
-
-        final BufferedImage finalLegend;
-
-        if (imageStack.size() == 1 && (!forceLabelsOn || rules == null)) {
-            finalLegend = (BufferedImage) imageStack.get(0);
-        } else {
-            final int imgCount = imageStack.size();
-            final String[] labels = new String[imgCount];
-
-            BufferedImage img = ((BufferedImage) imageStack.get(0));
-
-            int totalHeight = 0;
-            int totalWidth = 0;
-            int[] rowHeights = new int[imgCount];
-            BufferedImage labelsGraphics[] = new BufferedImage[imgCount];
-            for (int i = 0; i < imgCount; i++) {
-                img = (BufferedImage) imageStack.get(i);
-
-                if (forceLabelsOff || rules == null) {
-                    totalWidth = (int) Math.ceil(Math.max(img.getWidth(), totalWidth));
-                    rowHeights[i] = img.getHeight();
-                    totalHeight += img.getHeight();
-                } else {
-
-                    Rule rule = rules[i];
-
-                    // What's the label on this rule? We prefer to use
-                    // the 'title' if it's available, but fall-back to 'name'
-                    final Description description = rule.getDescription();
-                    Locale locale = req.getLocale();
-                    
-                    if (description != null && description.getTitle() != null) {
-                        final InternationalString title = description.getTitle();
-                        if(locale != null) {
-                        	labels[i] = title.toString(locale);
-                        } else {
-                        labels[i] = title.toString();
-                        }
-                    } else if (rule.getName() != null) {
-                        labels[i] = rule.getName();
-                    } else {
-                        labels[i] = "";
-                    }
-                    
-                    if (labels[i] != null && labels[i].length() > 0) {
-                        final BufferedImage renderedLabel = getRenderedLabel(img,labels[i],req);
-                        labelsGraphics[i] = renderedLabel;
-                        final Rectangle2D bounds = new Rectangle2D.Double(0, 0,
-                                renderedLabel.getWidth(), renderedLabel.getHeight());
-
-                        totalWidth = (int) Math.ceil(Math.max(img.getWidth() + bounds.getWidth(),
-                                totalWidth));
-                        rowHeights[i] = (int) Math.ceil(Math.max(img.getHeight(),
-                                bounds.getHeight()));
-                    } else {
-                        totalWidth = (int) Math.ceil(Math.max(img.getWidth(), totalWidth));
-                        rowHeights[i] = (int) Math.ceil(img.getHeight());
-                        labelsGraphics[i] = null;
-                    }
-
-                    totalHeight += rowHeights[i];
-
-                }
-            }
-
-            // buffer the width a bit
-            totalWidth += 2;
-
-            final boolean transparent = req.isTransparent();
-            final Color backgroundColor = LegendUtils.getBackgroundColor(req);
-            final Map<RenderingHints.Key, Object> hintsMap = new HashMap<RenderingHints.Key, Object>();
-            // create the final image
-            finalLegend = ImageUtils.createImage(totalWidth, totalHeight, (IndexColorModel) null,
-                    transparent);
-            Graphics2D finalGraphics = ImageUtils.prepareTransparency(transparent, backgroundColor,
-                    finalLegend, hintsMap);
-
-            int topOfRow = 0;
-
-            for (int i = 0; i < imgCount; i++) {
-                img = (BufferedImage) imageStack.get(i);
-
-                // draw the image
-                int y = topOfRow;
-
-                if (img.getHeight() < rowHeights[i]) {
-                    // move the image to the center of the row
-                    y += (int) ((rowHeights[i] - img.getHeight()) / 2d);
-                }
-
-                finalGraphics.drawImage(img, 0, y, null);
-                if (forceLabelsOff || rules == null) {
-                    topOfRow += rowHeights[i];
-                    continue;
-                }
-
-                finalGraphics.setFont(labelFont);
-
-                if (useAA) {
-                    finalGraphics.setRenderingHint(RenderingHints.KEY_TEXT_ANTIALIASING,
-                            RenderingHints.VALUE_TEXT_ANTIALIAS_ON);
-                } else {
-                    finalGraphics.setRenderingHint(RenderingHints.KEY_TEXT_ANTIALIASING,
-                            RenderingHints.VALUE_TEXT_ANTIALIAS_OFF);
-                }
-
-                // draw the label
-                if (labels[i] != null && labels[i].length() > 0) {
-                    // first create the actual overall label image.
-                    final BufferedImage renderedLabel = labelsGraphics[i];
-
-                    y = topOfRow;
-
-                    if (renderedLabel.getHeight() < rowHeights[i]) {
-                        y += (int) ((rowHeights[i] - renderedLabel.getHeight()) / 2d);
-                    }
-
-                    finalGraphics.drawImage(renderedLabel, img.getWidth(), y, null);
-                    // cleanup
-                    renderedLabel.flush();
-                    labelsGraphics[i] = null;
-                }
-
-                topOfRow += rowHeights[i];
-            }
-
-            finalGraphics.dispose();
-        }
-        return finalLegend;
     }
-    
-    
 
     /**
      * Returns a <code>java.awt.Shape</code> appropiate to render a legend graphic given the
@@ -868,7 +779,7 @@ public class BufferedImageLegendGraphicBuilder {
      * @param schema the schema for which to create a sample Feature instance
      * @param dimensionality the geometry dimensionality required (ovverides the one
      *        defined in the schema) 1= points, 2= lines, 3= polygons
-     * @return
+     *
      * @throws ServiceException
      */
     private Feature createSampleFeature(FeatureType schema, int dimensionality)
@@ -887,7 +798,7 @@ public class BufferedImageLegendGraphicBuilder {
      * @param schema schema to clone
      * @param dimensionality dimensionality for the geometry 1= points, 2= lines, 3=
      *        polygons
-     * @return
+     *
      */
     private FeatureType cloneWithDimensionality(FeatureType schema,
             int dimensionality) {
@@ -924,7 +835,7 @@ public class BufferedImageLegendGraphicBuilder {
      * Creates a Geometry class for the given dimensionality.
      * 
      * @param dimensionality
-     * @return
+     *
      */
     private Class<?> getGeometryForDimensionality(int dimensionality) {
         if (dimensionality == 1) {
@@ -943,7 +854,7 @@ public class BufferedImageLegendGraphicBuilder {
      * @param schema
      *            the schema for which to create a sample Feature instance
      * 
-     * @return
+     *
      * 
      * @throws ServiceException
      */
@@ -971,7 +882,7 @@ public class BufferedImageLegendGraphicBuilder {
      * Geometry type.
      * 
      * @param schema
-     * @return
+     *
      */
     private boolean hasMixedGeometry(SimpleFeatureType schema) {
         for (AttributeDescriptor attDesc : schema.getAttributeDescriptors()) {

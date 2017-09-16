@@ -1,15 +1,19 @@
-/* (c) 2014 Open Source Geospatial Foundation - all rights reserved
+/* (c) 2014 - 2015 Open Source Geospatial Foundation - all rights reserved
  * (c) 2001 - 2013 OpenPlans
  * This code is licensed under the GPL 2.0 license, available at the root
  * application directory.
  */
 package org.geoserver.csw;
 
-import static junit.framework.Assert.*;
-import static org.custommonkey.xmlunit.XMLAssert.*;
+import static junit.framework.Assert.assertEquals;
+import static junit.framework.Assert.assertNotNull;
+import static junit.framework.Assert.assertTrue;
+import static junit.framework.Assert.fail;
+import static org.custommonkey.xmlunit.XMLAssert.assertXpathEvaluatesTo;
 
 import java.io.StringReader;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 
 import net.opengis.ows10.GetCapabilitiesType;
@@ -19,10 +23,14 @@ import org.custommonkey.xmlunit.SimpleNamespaceContext;
 import org.custommonkey.xmlunit.XMLUnit;
 import org.custommonkey.xmlunit.XpathEngine;
 import org.eclipse.emf.common.util.EList;
+import org.geoserver.catalog.Catalog;
+import org.geoserver.config.GeoServer;
 import org.geoserver.csw.kvp.GetCapabilitiesKvpRequestReader;
 import org.geoserver.csw.xml.v2_0_2.CSWXmlReader;
 import org.geoserver.ows.xml.v1_0.OWS;
+import org.geoserver.platform.GeoServerExtensions;
 import org.geoserver.platform.ServiceException;
+import org.geoserver.util.EntityResolverProvider;
 import org.geotools.csw.CSWConfiguration;
 import org.geotools.filter.v1_1.OGC;
 import org.geotools.xlink.XLINK;
@@ -83,7 +91,8 @@ public class GetCapabilitiesTest extends CSWSimpleTestSupport {
 
     @Test 
     public void testXMLReader() throws Exception {
-        CSWXmlReader reader = new CSWXmlReader("GetCapabilities", "2.0.2", new CSWConfiguration());
+        CSWXmlReader reader = new CSWXmlReader("GetCapabilities", "2.0.2", new CSWConfiguration(),
+                EntityResolverProvider.RESOLVE_DISABLED_PROVIDER);
         GetCapabilitiesType caps = (GetCapabilitiesType) reader.read(null,
                 getResourceAsReader("GetCapabilities.xml"), (Map) null);
         assertReturnedCapabilitiesComplete(caps);
@@ -96,7 +105,7 @@ public class GetCapabilitiesTest extends CSWSimpleTestSupport {
         capRequest = capRequest.replace("ows:Sections", "ows:foo");
         try {
             CSWXmlReader reader = new CSWXmlReader("GetCapabilities", "2.0.2",
-                    new CSWConfiguration());
+                    new CSWConfiguration(), EntityResolverProvider.RESOLVE_DISABLED_PROVIDER);
             reader.read(null, new StringReader(capRequest), (Map) null);
             fail("the parsing should have failed, the document is invalid");
         } catch (ServiceException e) {
@@ -110,7 +119,7 @@ public class GetCapabilitiesTest extends CSWSimpleTestSupport {
     @Test 
     public void testGetBasic() throws Exception {
         Document dom = getAsDOM(BASEPATH + "?service=csw&version=2.0.2&request=GetCapabilities");
-        print(dom);
+        //print(dom);
         checkValidationErrors(dom);
 
         // basic check on local name
@@ -161,6 +170,35 @@ public class GetCapabilitiesTest extends CSWSimpleTestSupport {
                 xpath.evaluate(
                         "//ows:OperationsMetadata/ows:Operation[@name=\"GetCapabilities\"]/ows:Constraint/ows:Value",
                         dom));
+    }
+
+    @Test
+    public void testVirtualService() throws Exception {
+        List<CSWInfo> infos = GeoServerExtensions.extensions(CSWInfo.class);
+
+        Catalog catalog = getCatalog();
+        GeoServer geoServer = getGeoServer();
+
+        CSWInfo localCSW = new CSWInfoImpl();
+        localCSW.setName("localCSW");
+        localCSW.setWorkspace(catalog.getWorkspaceByName("gs"));
+        localCSW.setAbstract("Local CSW");
+
+        CSWInfo globalCSW = geoServer.getService(CSWInfo.class);
+        globalCSW.setAbstract("Global CSW");
+
+        geoServer.add(localCSW);
+        geoServer.save(globalCSW);
+
+        // Test global abstract
+        Document dom = getAsDOM(BASEPATH + "?service=csw&version=2.0.2&request=GetCapabilities");
+        checkValidationErrors(dom);
+        assertEquals("Global CSW", xpath.evaluate("//ows:ServiceIdentification/ows:Abstract", dom));
+
+        //Test local abstract
+        dom = getAsDOM("gs/" + BASEPATH + "?service=csw&version=2.0.2&request=GetCapabilities");
+        checkValidationErrors(dom);
+        assertEquals("Local CSW", xpath.evaluate("//ows:ServiceIdentification/ows:Abstract", dom));
     }
 
     @Test 

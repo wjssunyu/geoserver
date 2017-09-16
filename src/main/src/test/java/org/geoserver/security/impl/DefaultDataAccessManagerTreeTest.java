@@ -5,25 +5,15 @@
  */
 package org.geoserver.security.impl;
 
-import static org.easymock.EasyMock.anyObject;
-import static org.easymock.EasyMock.createNiceMock;
-import static org.easymock.EasyMock.expect;
-import static org.easymock.EasyMock.replay;
-import static org.junit.Assert.*;
+import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertFalse;
+import static org.junit.Assert.assertNotNull;
+import static org.junit.Assert.assertTrue;
 
-import java.util.Arrays;
 import java.util.Properties;
 import java.util.Set;
 
-import junit.framework.TestCase;
-
-import org.springframework.security.core.GrantedAuthority;
-import org.springframework.security.authentication.TestingAuthenticationToken;
-import org.geoserver.catalog.Catalog;
-import org.geoserver.catalog.WorkspaceInfo;
 import org.geoserver.security.AccessMode;
-import org.geoserver.security.impl.DefaultDataAccessManager;
-import org.geoserver.security.impl.SecureTreeNode;
 import org.junit.Before;
 import org.junit.Test;
 
@@ -34,39 +24,17 @@ import org.junit.Test;
  * @author Andrea Aime - TOPP
  * 
  */
-public class DefaultDataAccessManagerTreeTest {
-
-    private Catalog catalog;
-
-    private TestingAuthenticationToken rwUser;
+public class DefaultDataAccessManagerTreeTest extends AbstractAuthorizationTest {
     
-    private TestingAuthenticationToken milUser;
-
-    private TestingAuthenticationToken roUser;
-
-    private TestingAuthenticationToken anonymous;
-
     @Before
-    public void setUp() throws Exception {
-        catalog = createNiceMock(Catalog.class);
-        expect(catalog.getWorkspace((String) anyObject())).andReturn(
-                createNiceMock(WorkspaceInfo.class)).anyTimes();
-        replay(catalog);
-
-        rwUser = new TestingAuthenticationToken("rw", "supersecret", Arrays.asList(new GrantedAuthority[] {
-                new GeoServerRole("READER"), new GeoServerRole("WRITER") }));
-        roUser = new TestingAuthenticationToken("ro", "supersecret",
-                Arrays.asList(new GrantedAuthority[] { new GeoServerRole("READER") }));
-        anonymous = new TestingAuthenticationToken("anonymous", null);
-        milUser = new TestingAuthenticationToken("military", "supersecret", Arrays.asList(new GrantedAuthority[] {
-                new GeoServerRole("MILITARY") }));
-
+    public void setupCatalog() {
+        populateCatalog();
     }
 
     private SecureTreeNode buildTree(String propertyFile) throws Exception {
         Properties props = new Properties();
         props.load(getClass().getResourceAsStream(propertyFile));
-        return new DefaultDataAccessManager(new MemoryDataAccessRuleDAO(catalog, props)).root;
+        return new DefaultResourceAccessManager(new MemoryDataAccessRuleDAO(catalog, props), catalog).root;
     }
 
     @Test
@@ -167,4 +135,6 @@ public class DefaultDataAccessManagerTreeTest {
         assertTrue(bases.canAccess(milUser, AccessMode.READ));
         assertTrue(bases.canAccess(milUser, AccessMode.WRITE));
     }
+    
+
 }

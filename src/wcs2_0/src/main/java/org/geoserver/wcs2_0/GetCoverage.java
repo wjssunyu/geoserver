@@ -1,4 +1,4 @@
-/* (c) 2014 Open Source Geospatial Foundation - all rights reserved
+/* (c) 2014 - 2015 Open Source Geospatial Foundation - all rights reserved
  * (c) 2001 - 2013 OpenPlans
  * This code is licensed under the GPL 2.0 license, available at the root
  * application directory.
@@ -20,24 +20,13 @@ import java.util.Map;
 import java.util.Set;
 import java.util.logging.Level;
 import java.util.logging.Logger;
+import java.util.stream.Collectors;
 
 import javax.media.jai.BorderExtender;
 import javax.media.jai.Interpolation;
 import javax.media.jai.InterpolationNearest;
 import javax.media.jai.JAI;
 import javax.media.jai.WarpAffine;
-
-import net.opengis.wcs20.ExtensionItemType;
-import net.opengis.wcs20.ExtensionType;
-import net.opengis.wcs20.GetCoverageType;
-import net.opengis.wcs20.InterpolationAxesType;
-import net.opengis.wcs20.InterpolationAxisType;
-import net.opengis.wcs20.InterpolationMethodType;
-import net.opengis.wcs20.InterpolationType;
-import net.opengis.wcs20.RangeIntervalType;
-import net.opengis.wcs20.RangeItemType;
-import net.opengis.wcs20.RangeSubsetType;
-import net.opengis.wcs20.ScalingType;
 
 import org.eclipse.emf.common.util.EList;
 import org.geoserver.catalog.Catalog;
@@ -52,6 +41,7 @@ import org.geoserver.wcs2_0.exception.WCS20Exception;
 import org.geoserver.wcs2_0.exception.WCS20Exception.WCS20ExceptionCode;
 import org.geoserver.wcs2_0.response.DimensionBean;
 import org.geoserver.wcs2_0.response.GranuleStackImpl;
+import org.geoserver.wcs2_0.response.MIMETypeMapper;
 import org.geoserver.wcs2_0.response.WCSDimensionsSubsetHelper;
 import org.geoserver.wcs2_0.util.EnvelopeAxesLabelsMapper;
 import org.geoserver.wcs2_0.util.NCNameResourceCodec;
@@ -94,6 +84,7 @@ import org.opengis.coverage.SampleDimension;
 import org.opengis.coverage.grid.GridCoverage;
 import org.opengis.coverage.grid.GridEnvelope;
 import org.opengis.coverage.processing.Operation;
+import org.opengis.filter.Filter;
 import org.opengis.geometry.BoundingBox;
 import org.opengis.geometry.Envelope;
 import org.opengis.parameter.GeneralParameterDescriptor;
@@ -111,6 +102,18 @@ import org.opengis.referencing.operation.TransformException;
 import org.vfny.geoserver.util.WCSUtils;
 import org.vfny.geoserver.wcs.WcsException;
 
+import net.opengis.wcs20.ExtensionItemType;
+import net.opengis.wcs20.ExtensionType;
+import net.opengis.wcs20.GetCoverageType;
+import net.opengis.wcs20.InterpolationAxesType;
+import net.opengis.wcs20.InterpolationAxisType;
+import net.opengis.wcs20.InterpolationMethodType;
+import net.opengis.wcs20.InterpolationType;
+import net.opengis.wcs20.RangeIntervalType;
+import net.opengis.wcs20.RangeItemType;
+import net.opengis.wcs20.RangeSubsetType;
+import net.opengis.wcs20.ScalingType;
+
 /**
  * Implementation of the WCS 2.0.1 GetCoverage request
  * 
@@ -120,22 +123,19 @@ import org.vfny.geoserver.wcs.WcsException;
  */
 public class GetCoverage {
     
-    private final static Set<String> mdFormats;
+    private static final Hints HINTS = new Hints(
+            Hints.LENIENT_DATUM_SHIFT, Boolean.TRUE);
 
+	private final static Set<String> mdFormats;
+
+    private static final CoverageProcessor processor = CoverageProcessor.getInstance(HINTS);
+    
     static {
-        //TODO: This one should be pluggable
+        //TODO: This one should be pluggable through Extensions
         mdFormats = new HashSet<String>();
         mdFormats.add("application/x-netcdf");
-        final CoverageProcessor processor = new CoverageProcessor(new Hints(
-                Hints.LENIENT_DATUM_SHIFT, Boolean.TRUE));
-        MOSAIC_PARAMS = processor.getOperation("Mosaic").getParameters();
+        mdFormats.add("application/x-netcdf4");
     }
-    
-    /** Cached factory for the {@link Mosaic} operation. */
-    final static Mosaic MOSAIC_FACTORY = new Mosaic();
-
-    /** Parameters used to control the {@link Mosaic} operation. */
-    static ParameterValueGroup MOSAIC_PARAMS;
 
     /** Logger.*/
     private static Logger LOGGER= Logging.getLogger(GetCoverage.class);
@@ -156,6 +156,8 @@ public class GetCoverage {
     /** Factory used to create new coverages */
     private GridCoverageFactory gridCoverageFactory;
 
+    private MIMETypeMapper mimeMapper;
+
     public final static String SRS_STARTER="http://www.opengis.net/def/crs/EPSG/0/";
 
     /** Hints to indicate that a scale has been pre-applied, reporting the scaling factors */
@@ -163,13 +165,14 @@ public class GetCoverage {
 
     private static final double EPS = 1e-6;
 
-    public GetCoverage(WCSInfo serviceInfo, Catalog catalog, EnvelopeAxesLabelsMapper envelopeDimensionsMapper) {
+    public GetCoverage(WCSInfo serviceInfo, Catalog catalog, EnvelopeAxesLabelsMapper envelopeDimensionsMapper, MIMETypeMapper mimeMapper) {
         this.wcs = serviceInfo;
         this.catalog = catalog;
         this.envelopeDimensionsMapper=envelopeDimensionsMapper;
+        this.mimeMapper = mimeMapper;
 
         // building the needed URI CRS Factories
-        Hints hints = GeoTools.getDefaultHints().clone();
+        Hints hints = GeoTools.getDefaultHints();
         hints.add(new Hints(Hints.FORCE_LONGITUDE_FIRST_AXIS_ORDER,Boolean.TRUE));
         hints.add(new Hints(Hints.FORCE_AXIS_ORDER_HONORING, "http-uri"));
         lonLatCRSFactory = ReferencingFactoryFinder.getCRSAuthorityFactory("http://www.opengis.net/def", hints); 
@@ -184,7 +187,7 @@ public class GetCoverage {
      * Return true in case the specified format supports Multidimensional Output
      * TODO: Consider adding a method to CoverageResponseDelegate returning this information
      * @param format
-     * @return
+     *
      */
     public static boolean formatSupportMDOutput(String format) {
         return mdFormats.contains(format);
@@ -198,6 +201,12 @@ public class GetCoverage {
      */
     public GridCoverage run(GetCoverageType request) {
 
+        // get same support filter as in WCS 1.0 and WCS 1.1
+        Filter filter = WCSUtils.getRequestFilter();
+        if(filter != null) {
+            request.setFilter(filter);
+        }
+        
         //
         // get the coverage info from the catalog or throw an exception if we don't find it
         //
@@ -209,6 +218,16 @@ public class GetCoverage {
         final CoverageInfo cinfo = (CoverageInfo) linfo.getResource();
         if(LOGGER.isLoggable(Level.FINE)){
             LOGGER.fine("Executing GetCoverage request on coverage :"+linfo.toString());
+        }
+        
+        // prepare the default format
+        if(request.getFormat() == null) {
+            try {
+                String nativeFormat = mimeMapper.mapNativeFormat(cinfo);
+                request.setFormat(nativeFormat);
+            } catch(Exception e) {
+                LOGGER.log(Level.WARNING, "Could not compute the native type of the coverage, defaulting to image/tiff", e);
+            }
         }
 
         // === k, now start the execution
@@ -312,8 +331,7 @@ public class GetCoverage {
      * @param extensions 
      * @param coverageFactory 
      * @param dimensions 
-     * @return
-     * @throws Exception
+     *
      */
     private GridCoverage2D setupCoverage(
             final WCSDimensionsSubsetHelper helper, 
@@ -416,6 +434,9 @@ public class GetCoverage {
         if (reader instanceof StructuredGridCoverage2DReader && coverageDimensions != null) {
             // Setting dimensions as properties
             Map map = coverage.getProperties();
+            if (map == null) {
+                map = new HashMap();
+            }
             for (DimensionBean coverageDimension : coverageDimensions) {
                 helper.setCoverageDimensionProperty(map, gridCoverageRequest, coverageDimension);
             }
@@ -486,10 +507,10 @@ public class GetCoverage {
 
         // mosaic
         try {
-            final ParameterValueGroup param = MOSAIC_PARAMS.clone();
+            final ParameterValueGroup param = processor.getOperation("Mosaic").getParameters();
             param.parameter("sources").setValue(coverages);
             param.parameter("policy").setValue(GridGeometryPolicy.FIRST.name());
-            return (GridCoverage2D) MOSAIC_FACTORY.doOperation(param, hints);
+            return (GridCoverage2D) ((Mosaic)processor.getOperation("Mosaic")).doOperation(param, hints);
         } catch (Exception e) {
             throw new RuntimeException("Failed to mosaic the input coverages", e);
         }
@@ -564,6 +585,7 @@ public class GetCoverage {
         gcr.setElevationSubset(requestSubset.getElevationSubset());
         gcr.setDimensionsSubset(requestSubset.getDimensionsSubset());
         gcr.setFilter(request.getFilter());
+        gcr.setSortBy(request.getSortBy());
         gcr.setOverviewPolicy(overviewPolicy);
         subsetHelper.setGridCoverageRequest(gcr);
         return subsetHelper;
@@ -604,8 +626,7 @@ public class GetCoverage {
      * @param coverage
      * @param hints
      * @param outputCRS
-     * @return
-     * @throws Exception
+     *
      */
     private GridCoverage2D enforceLatLongOrder(GridCoverage2D coverage, final Hints hints,
             final CoordinateReferenceSystem outputCRS) throws Exception {
@@ -703,8 +724,7 @@ public class GetCoverage {
      * @param cinfo
      * @param reader
      * @param hints
-     * @return
-     * @throws Exception
+     *
      */
     private List<GridCoverage2D> readCoverage(
             WCSDimensionsSubsetHelper helper,
@@ -756,6 +776,9 @@ public class GetCoverage {
             if (cov == null) {
                 cov = readCoverage(cinfo, request, reader, hints, incrementalInputSize,
                         spatialInterpolation, coverageCRS, readEnvelope, requestedEnvelope, scaling, preAppliedScale);
+                if (cov == null) {
+                    continue;
+                }
                 readCoverages.add(cov);
             }
             Envelope2D covEnvelope = cov.getEnvelope2D();
@@ -777,7 +800,7 @@ public class GetCoverage {
         // leverage GeoTools projection handlers to figure out exactly which areas we should be
         // reading
         ProjectionHandler handler = ProjectionHandlerFinder.getHandler(new ReferencedEnvelope(
-                envelope), readerCRS, false);
+                envelope), readerCRS, true);
         if (handler == null) {
             readEnvelopes.add(new GeneralEnvelope(envelope));
         } else {
@@ -824,9 +847,7 @@ public class GetCoverage {
         GeneralParameterValue[] readParameters = CoverageUtils.getParameters(readParametersDescriptor, cinfo.getParameters());
         readParameters = (readParameters != null ? readParameters : new GeneralParameterValue[0]);
         // work in streaming fashion when JAI is involved
-        readParameters = WCSUtils.replaceParameter(
-                readParameters, 
-                Boolean.FALSE, 
+        readParameters = WCSUtils.replaceParameter(readParameters, Boolean.TRUE,
                 AbstractGridFormat.USE_JAI_IMAGEREAD);
 
         // handle "time"
@@ -846,9 +867,24 @@ public class GetCoverage {
         }
 
         // handle filter
-        if(request.getFilter() != null) {
-            List<GeneralParameterDescriptor> descriptors = readParametersDescriptor.getDescriptor().descriptors();
-            readParameters = CoverageUtils.mergeParameter(descriptors, readParameters, request.getFilter(), "Filter");
+        if (request.getFilter() != null) {
+            List<GeneralParameterDescriptor> descriptors = readParametersDescriptor.getDescriptor()
+                    .descriptors();
+            readParameters = CoverageUtils.mergeParameter(descriptors, readParameters,
+                    request.getFilter(), "Filter");
+        }
+        
+        // handle sorting
+        if (request.getSortBy() != null) {
+            List<GeneralParameterDescriptor> descriptors = readParametersDescriptor.getDescriptor()
+                    .descriptors();
+            String sortBySpec = request.getSortBy().stream()
+                    .map(sb -> sb.getPropertyName().getPropertyName() + " "
+                            + sb.getSortOrder().name().charAt(0))
+                    .collect(Collectors.joining(","));
+
+            readParameters = CoverageUtils.mergeParameter(descriptors, readParameters, sortBySpec,
+                    "SORTING");
         }
 
         // handle additional dimensions through dynamic parameters
@@ -879,7 +915,7 @@ public class GetCoverage {
             // let's create a subsetting GG2D (Taking overviews and requested scaling into account)
             MathTransform transform = getMathTransform(reader,
                     requestedEnvelope != null ? requestedEnvelope : subset, request,
-                    PixelInCell.CELL_CENTER, scaling, preAppliedScale);
+                    PixelInCell.CELL_CENTER, scaling);
             readGG = new GridGeometry2D(
                     PixelInCell.CELL_CENTER,
                     transform,
@@ -913,15 +949,22 @@ public class GetCoverage {
         // === read
         // check limits
         WCSUtils.checkInputLimits(wcs,cinfo,reader,readGG);
+        Hints readHints = new Hints();
+        if (hints != null) {
+            readHints.putAll(hints);
+        }
+        if (request.getOverviewPolicy() != null) {
+            readHints.add(new Hints(Hints.OVERVIEW_POLICY, request.getOverviewPolicy()));
+        }
         coverage= RequestUtils.readBestCoverage(
                 reader, 
                 readParameters,  
                 readGG, 
                 spatialInterpolation,
                 request.getOverviewPolicy(),
-                hints);
-        // check limits again
+                readHints);
         if (coverage != null) {
+            // check limits again
             if (incrementalInputSize == null) {
                 WCSUtils.checkInputLimits(wcs, coverage);
             } else {
@@ -929,21 +972,41 @@ public class GetCoverage {
                 // If the size is exceeded an exception is thrown
                 incrementalInputSize.addSize(coverage);
             }
+            
+            // see what scaling factors the reader actually applied
+            if (scaling != null) {
+                MathTransform cmt = coverage.getGridGeometry().getGridToCRS();
+                MathTransform rmt = reader.getOriginalGridToWorld(PixelInCell.CELL_CENTER);
+                if (!(cmt instanceof AffineTransform2D) || !(rmt instanceof AffineTransform2D)) {
+                    LOGGER.log(Level.FINE, "Cannot check if the returned coverage "
+                            + "matched the requested resolution due to a non affine "
+                            + "grid to world backing it"); 
+                } else {
+                    AffineTransform2D cat = (AffineTransform2D) cmt;
+                    AffineTransform2D rat = (AffineTransform2D) rmt;
+                    preAppliedScale[0] = cat.getScaleX() / rat.getScaleX();
+                    preAppliedScale[1] = cat.getScaleY() / rat.getScaleY();
+                }
+            }
+
         }
 
         // return
         return coverage;
     }
 
-    private MathTransform getMathTransform(GridCoverage2DReader reader, Envelope subset, 
-            GridCoverageRequest request, PixelInCell pixelInCell, ScalingType scaling, double[] preAppliedScale) throws IOException {
-        final OverviewPolicy overviewPolicy = request.getOverviewPolicy();
+    MathTransform getMathTransform(GridCoverage2DReader reader, Envelope subset, 
+            GridCoverageRequest request, PixelInCell pixelInCell, ScalingType scaling) throws IOException {
+        // return the original grid to world only if there is no scaling, the overview policy
+        // is going to be taken care of when sending data to the image reader (failing to do
+        // so will cause OOM or get the processing thread blocked for a long time because 
+        // the reader is no more allowed to use subsampling)
         ScalingPolicy scalingPolicy = scaling == null ? null : ScalingPolicy.getPolicy(scaling);
-        if (overviewPolicy == null || overviewPolicy == OverviewPolicy.IGNORE || scaling == null ||
-                scalingPolicy == null || scalingPolicy == ScalingPolicy.ScaleToExtent) {
+        if (scalingPolicy == null || scalingPolicy == ScalingPolicy.DoNothing) {
             return reader.getOriginalGridToWorld(pixelInCell);
         }
 
+        // here we are already assuming to work off an affine transform
         MathTransform transform = reader.getOriginalGridToWorld(pixelInCell);
         AffineTransform af = (AffineTransform) transform;
    
@@ -954,14 +1017,9 @@ public class GetCoverage {
         // Getting the requested resolution, taking the requested scaling into account 
         final double[] requestedResolution = computeRequestedResolution(scaling, subset, nativeResX, nativeResY);
 
-        // Getting the read resolution from the reader, based on the Overview Policy
-        final double[] readResolution = reader.getReadingResolutions(overviewPolicy, requestedResolution);
-
-        // setup a scaling to get the transformation to be used to access the specified overview 
+        // setup a scaling to get the desired resolution while allowing the reader to apply subsampling 
         AffineTransform scale = new AffineTransform();
-        preAppliedScale[0] = readResolution[0] / nativeResX;
-        preAppliedScale[1] = readResolution[1] / nativeResY;
-        scale.scale(preAppliedScale[0], preAppliedScale[1]);
+        scale.scale(requestedResolution[0] / nativeResX, requestedResolution[1] / nativeResY);
         AffineTransform finalTransform = new AffineTransform(af);
         finalTransform.concatenate(scale);
         return ProjectiveTransform.create(finalTransform);
@@ -973,13 +1031,13 @@ public class GetCoverage {
      * @param subset
      * @param nativeResX
      * @param nativeResY
-     * @return
+     *
      */
     private double[] computeRequestedResolution(ScalingType scaling, Envelope subset,
             double nativeResX, double nativeResY) {
         ScalingPolicy policy = ScalingPolicy.getPolicy(scaling);
         double[] requestedResolution = new double[2];
-        if (policy == ScalingPolicy.ScaleToSize) {
+        if (policy == ScalingPolicy.ScaleToSize || policy == ScalingPolicy.ScaleToExtent) {
             int[] scalingSize = ScalingPolicy.getTargetSize(scaling);
 
             // Getting the requested resolution (using envelope and requested scaleSize)
@@ -1148,7 +1206,7 @@ public class GetCoverage {
     /**
      * @param reader 
      * @param extensions
-     * @return
+     *
      */
     private Map<String,InterpolationPolicy> extractInterpolation(GridCoverage2DReader reader, Map<String, ExtensionItemType> extensions) {
         // preparation
@@ -1503,7 +1561,7 @@ public class GetCoverage {
         /**
          * Return the total size accumulated
          * 
-         * @return
+         *
          */
         public long finalSize() {
             return incrementalSize;
@@ -1530,7 +1588,7 @@ public class GetCoverage {
          * (code from WCSUtils)
          * @param envelope
          * @param sm
-         * @return
+         *
          */
         private static long getCoverageSize(GridEnvelope2D envelope, SampleModel sm) {
             // === compute the coverage memory usage and compare with limit

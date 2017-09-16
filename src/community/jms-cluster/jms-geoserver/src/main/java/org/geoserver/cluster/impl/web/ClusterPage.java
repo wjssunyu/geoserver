@@ -1,4 +1,4 @@
-/* (c) 2014 Open Source Geospatial Foundation - all rights reserved
+/* (c) 2014 - 2016 Open Source Geospatial Foundation - all rights reserved
  * (c) 2001 - 2013 OpenPlans
  * This code is licensed under the GPL 2.0 license, available at the root
  * application directory.
@@ -15,7 +15,6 @@ import org.apache.wicket.markup.html.form.Form;
 import org.apache.wicket.markup.html.form.TextField;
 import org.apache.wicket.markup.html.panel.FeedbackPanel;
 import org.apache.wicket.model.CompoundPropertyModel;
-import org.apache.wicket.model.StringResourceModel;
 import org.geoserver.cluster.JMSFactory;
 import org.geoserver.cluster.client.JMSContainer;
 import org.geoserver.cluster.configuration.BrokerConfiguration;
@@ -48,39 +47,33 @@ public class ClusterPage extends GeoServerSecuredPage {
         fp.setOutputMarkupId(true);
 
         // form and submit
-        final Form<Properties> form = new Form<Properties>("form",
-                new CompoundPropertyModel<Properties>(getConfig().getConfigurations()));
+        Properties configurations = getConfig().getConfigurations();
+        final Form<Properties> form = new Form<Properties>("form", new CompoundPropertyModel<Properties>(configurations));
 
         // add broker URL setting
         final TextField<String> brokerURL = new TextField<String>(
-                BrokerConfiguration.BROKER_URL_KEY);
-        // https://issues.apache.org/jira/browse/WICKET-2426
-        brokerURL.setType(String.class);
+                BrokerConfiguration.BROKER_URL_KEY, String.class);
         form.add(brokerURL);
 
         // add group name setting
         final TextField<String> instanceName = new TextField<String>(
-                JMSConfiguration.INSTANCE_NAME_KEY);
-        // https://issues.apache.org/jira/browse/WICKET-2426
-        instanceName.setType(String.class);
+                JMSConfiguration.INSTANCE_NAME_KEY, String.class);
         form.add(instanceName);
         
         // add instance name setting
         final TextField<String> group = new TextField<String>(
-                JMSConfiguration.GROUP_KEY);
-        // https://issues.apache.org/jira/browse/WICKET-2426
-        group.setType(String.class);
+                JMSConfiguration.GROUP_KEY, String.class);
         form.add(group);
 
         // add topic name setting
-        final TextField<String> topicName = new TextField<String>(TopicConfiguration.TOPIC_NAME_KEY);
-        // https://issues.apache.org/jira/browse/WICKET-2426
+        final TextField<String> topicName = new TextField<String>(
+                TopicConfiguration.TOPIC_NAME_KEY, String.class);
         topicName.setType(String.class);
         form.add(topicName);
 
         // add connection status info
         final TextField<String> connectionInfo = new TextField<String>(
-                ConnectionConfiguration.CONNECTION_KEY);
+                ConnectionConfiguration.CONNECTION_KEY, String.class);
 
         // https://issues.apache.org/jira/browse/WICKET-2426
         connectionInfo.setType(String.class);
@@ -90,8 +83,7 @@ public class ClusterPage extends GeoServerSecuredPage {
         connectionInfo.setEnabled(false);
         form.add(connectionInfo);
 
-        final AjaxButton connection = new AjaxButton("connectionB", new StringResourceModel(
-                ConnectionConfiguration.CONNECTION_KEY, this, null)) {
+        final AjaxButton connection = new AjaxButton("connectionB") {
             /** serialVersionUID */
             private static final long serialVersionUID = 1L;
 
@@ -125,8 +117,8 @@ public class ClusterPage extends GeoServerSecuredPage {
                                 ConnectionConfigurationStatus.disabled.toString());
                     }
                 }
-                target.addComponent(connectionInfo);
-                target.addComponent(fp);
+                target.add(connectionInfo);
+                target.add(fp);
             }
 
         };
@@ -154,8 +146,7 @@ public class ClusterPage extends GeoServerSecuredPage {
         readOnlyInfo.setEnabled(false);
         form.add(readOnlyInfo);
 
-        final AjaxButton readOnly = new AjaxButton("readOnlyB", new StringResourceModel(
-                ReadOnlyConfiguration.READ_ONLY_KEY, this, null)) {
+        final AjaxButton readOnly = new AjaxButton("readOnlyB") {
             /** serialVersionUID */
             private static final long serialVersionUID = 1L;
 
@@ -170,12 +161,14 @@ public class ClusterPage extends GeoServerSecuredPage {
                     readOnlyInfo.getModel().setObject("enabled");
                     loader.enable(true);
                 }
-                target.addComponent(this.getParent());
+                target.add(this.getParent());
             }
         };
         form.add(readOnly);
 
-        final Button save = new Button("saveB", new StringResourceModel("save", this, null)) {
+        final Button save = new Button("saveB"
+
+        ) {
             /** serialVersionUID */
             private static final long serialVersionUID = 1L;
 
@@ -205,9 +198,7 @@ public class ClusterPage extends GeoServerSecuredPage {
         embeddedBrokerInfo.setEnabled(false);
         form.add(embeddedBrokerInfo);
 
-        final AjaxButton embeddedBroker = new AjaxButton(
-                "embeddedBrokerB",
-                new StringResourceModel(EmbeddedBrokerConfiguration.EMBEDDED_BROKER_KEY, this, null)) {
+        final AjaxButton embeddedBroker = new AjaxButton("embeddedBrokerB") {
             /** serialVersionUID */
             private static final long serialVersionUID = 1L;
 
@@ -217,7 +208,7 @@ public class ClusterPage extends GeoServerSecuredPage {
                 JMSFactory factory = getJMSFactory();
                 if (!factory.isEmbeddedBrokerStarted()) {
                     try {
-                        if (factory.startEmbeddedBroker(getConfig().getConfigurations())) {
+                        if (factory.startEmbeddedBroker(configurations)) {
                             embeddedBrokerInfo.getModel().setObject("enabled");
                         }
                     } catch (Exception e) {
@@ -236,31 +227,21 @@ public class ClusterPage extends GeoServerSecuredPage {
                         fp.error(e.getLocalizedMessage());
                     }
                 }
-                target.addComponent(this.getParent());
+                target.add(this.getParent());
             }
         };
         form.add(embeddedBroker);
 
-        // TODO change status if it is changed due to reset
-        // final Button reset = new Button("resetB", new StringResourceModel("reset", this, null)) {
-        // @Override
-        // public void onSubmit() {
-        // try {
-        // getConfig().loadTempConfig();
-        // fp.info("Configuration reloaded");
-        // } catch (FileNotFoundException e) {
-        // LOGGER.error(e.getLocalizedMessage(), e);
-        // fp.error(e.getLocalizedMessage());
-        // } catch (IOException e) {
-        // LOGGER.error(e.getLocalizedMessage(), e);
-        // fp.error(e.getLocalizedMessage());
-        // }
-        // }
-        // };
-        // form.add(reset);
-
         // add the form
         add(form);
+        
+        // make sure all text fields are not set to null in case of empty string, the
+        // property model is based on HastTable, that cannot handle null values
+        form.visitChildren(TextField.class, (component, visit) -> {
+            TextField tf = (TextField) component;
+            tf.setConvertEmptyInputStringToNull(false);
+        });
+        
 
         // add the status monitor
         add(fp);
@@ -271,10 +252,10 @@ public class ClusterPage extends GeoServerSecuredPage {
     private void addToggle(final String configKey, final ToggleType type, final String textFieldId,
             final String buttonId, final Form<?> form, final FeedbackPanel fp) {
 
-        final TextField<String> toggleInfo = new TextField<String>(textFieldId);
+        final TextField<String> toggleInfo = new TextField<String>(textFieldId, String.class);
 
         // https://issues.apache.org/jira/browse/WICKET-2426
-        toggleInfo.setType(String.class);
+        // toggleInfo.setType(String.class);
 
         toggleInfo.setOutputMarkupId(true);
         toggleInfo.setOutputMarkupPlaceholderTag(true);
@@ -289,7 +270,7 @@ public class ClusterPage extends GeoServerSecuredPage {
                     org.apache.wicket.markup.html.form.Form<?> form) {
                 fp.error("ERROR");
 
-                target.addComponent(fp);
+                target.add(fp);
             };
 
             @Override
@@ -309,8 +290,8 @@ public class ClusterPage extends GeoServerSecuredPage {
                             + " is still registered to the topic destination");
                 }
                 toggleInfo.getModel().setObject(Boolean.toString(switchTo));
-                target.addComponent(toggleInfo);
-                target.addComponent(fp);
+                target.add(toggleInfo);
+                target.add(fp);
 
             }
         };

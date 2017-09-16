@@ -1,9 +1,11 @@
-/* (c) 2014 Open Source Geospatial Foundation - all rights reserved
+/* (c) 2014 - 2016 Open Source Geospatial Foundation - all rights reserved
  * (c) 2014 OpenPlans
  * This code is licensed under the GPL 2.0 license, available at the root
  * application directory.
  */
 package org.geoserver.platform.resource;
+
+import static org.geoserver.util.IOUtils.rename;
 
 import java.io.File;
 import java.io.FileInputStream;
@@ -12,14 +14,30 @@ import java.io.FileOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
+import java.nio.file.NoSuchFileException;
+import java.nio.file.StandardCopyOption;
+import java.nio.file.attribute.BasicFileAttributes;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.List;
 import java.util.UUID;
+import java.util.logging.Level;
+import java.util.logging.Logger;
+
+import org.geotools.util.logging.Logging;
 
 /**
  * Implementation of ResourceStore backed by the file system.
  */
 public class FileSystemResourceStore implements ResourceStore {
+    
+    static final Logger LOGGER = Logging.getLogger(FileSystemResource.class);
+    
+    /**
+     * When true, the stack trace that got an input stream that wasn't closed is recorded and then
+     * printed out when warning the user about this.
+     */
+    protected static final Boolean TRACE_ENABLED = "true".equalsIgnoreCase(System.getProperty("gs.lock.trace"));
     
     /** LockProvider used to secure resources for exclusive access */
     protected LockProvider lockProvider = new NullLockProvider();
@@ -89,19 +107,6 @@ public class FileSystemResourceStore implements ResourceStore {
         }
     }
     
-    public synchronized void addListener(File file, String path, ResourceListener listener) {
-        if( watcher == null ){
-            watcher = new FileSystemWatcher();
-        }
-        watcher.addListener( file, path, listener );
-    }
-    
-    public synchronized void removeListener(File file, String path, ResourceListener listener) {
-        if( watcher != null ){
-            watcher.removeListener(file, path, listener );
-        }
-    }
-    
     @Override
     public Resource get(String path) {
         path = Paths.valid(path);
@@ -131,7 +136,10 @@ public class FileSystemResourceStore implements ResourceStore {
 
         try {
             dest.getParentFile().mkdirs(); // Make sure there's somewhere to move to.
-            return Files.move(file, dest);
+            java.nio.file.Files.move(java.nio.file.Paths.get(file.getAbsolutePath()),
+                    java.nio.file.Paths.get(dest.getAbsolutePath()),
+                    StandardCopyOption.ATOMIC_MOVE);
+            return true;
         } catch (IOException e) {
             throw new IllegalStateException("Unable to move " + path + " to " + target, e);
         }
@@ -148,6 +156,7 @@ public class FileSystemResourceStore implements ResourceStore {
      * This implementation is a stateless data object, acting as a simple handle around a File.
      */
     class FileSystemResource implements Resource {
+
         String path;
 
         File file;
@@ -174,12 +183,12 @@ public class FileSystemResourceStore implements ResourceStore {
         
         @Override
         public void addListener(ResourceListener listener) {
-            FileSystemResourceStore.this.addListener( file, path, listener );
+            getResourceNotificationDispatcher().addListener(path, listener);
         }
         
         @Override
         public void removeListener(ResourceListener listener) {
-            FileSystemResourceStore.this.removeListener( file, path, listener );
+            getResourceNotificationDispatcher().removeListener(path, listener);
         }
         @Override
         public InputStream in() {
@@ -188,12 +197,39 @@ public class FileSystemResourceStore implements ResourceStore {
                 throw new IllegalStateException("File not found " + actualFile);
             }
             final Lock lock = lock();
+            final Throwable tracer;
+            if(TRACE_ENABLED) {
+                tracer = new Exception();
+                tracer.fillInStackTrace();
+            } else {
+                tracer = null;
+            }
             try {
                 return new FileInputStream(file) {
+                    boolean closed = false;
+                    
+                    
                     @Override
                     public void close() throws IOException {
+                        closed = true;
                         super.close();
                         lock.release();
+                    }
+                    
+                    @Override
+                    protected void finalize() throws IOException {
+                        if(!closed) {
+                            String warn = "There is code leaving resource input streams open, locks around them might not be cleared! ";
+                            if(!TRACE_ENABLED) {
+                                warn += "Add -D" + TRACE_ENABLED + "=true to your JVM options to get a full stack trace of the code that acquired the input stream";
+                            }
+                            LOGGER.warning(warn);
+                            
+                            if(TRACE_ENABLED) {
+                                LOGGER.log(Level.WARNING, "The unclosed input stream originated on this stack trace", tracer);
+                            }
+                        }
+                        super.finalize();
                     }
                 };
             } catch (FileNotFoundException e) {
@@ -228,13 +264,16 @@ public class FileSystemResourceStore implements ResourceStore {
                     @Override
                     public void close() throws IOException {
                         delegate.close();
-                        Lock lock = lock();
-                        try {
-                            // no errors, overwrite the original file
-                            Files.move(temp, actualFile);
-                        }
-                        finally {
-                            lock.release();
+                        // if already closed, there should be no exception (see spec Closeable)
+                        if (temp.exists()) {
+                            Lock lock = lock();
+                            try {
+                                // no errors, overwrite the original file
+                                Files.move(temp, actualFile);
+                            }
+                            finally {
+                                lock.release();
+                            }
                         }
                     }
                 
@@ -349,6 +388,26 @@ public class FileSystemResourceStore implements ResourceStore {
         }
 
         @Override
+        public List<Resource> list() {
+            if (!file.exists()) {
+                return Collections.emptyList();
+            }
+            if (file.isFile()) {
+                return Collections.emptyList();
+            }
+            String array[] = file.list();
+            if (array == null) {
+                return Collections.emptyList();
+            }
+            List<Resource> list = new ArrayList<Resource>(array.length);
+            for (String filename : array) {
+                Resource resource = FileSystemResourceStore.this.get(Paths.path(path, filename));
+                list.add(resource);
+            }
+            return list;
+        }
+
+        @Override
         public Resource parent() {
             int split = path.lastIndexOf('/');
             if (split == -1) {
@@ -370,30 +429,21 @@ public class FileSystemResourceStore implements ResourceStore {
         }
 
         @Override
-        public List<Resource> list() {
-            String array[] = file.list();
-            if (array == null) {
-                return null; // not a directory
-            }
-            List<Resource> list = new ArrayList<Resource>(array.length);
-            for (String filename : array) {
-                Resource resource = FileSystemResourceStore.this.get(Paths.path(path, filename));
-                list.add(resource);
-            }
-            return list;
-        }
-
-        @Override
         public Type getType() {
-            if (!file.exists()) {
+            try {
+                BasicFileAttributes attributes = java.nio.file.Files.readAttributes(file.toPath(), BasicFileAttributes.class);
+                if(attributes.isDirectory()) {
+                    return Type.DIRECTORY;
+                } else if(attributes.isRegularFile()) {
+                    return Type.RESOURCE;
+                } else {
+                    throw new IllegalStateException(
+                          "Path does not represent a configuration resource: " + path);
+                }
+            } catch(NoSuchFileException e) {
                 return Type.UNDEFINED;
-            } else if (file.isDirectory()) {
-                return Type.DIRECTORY;
-            } else if (file.isFile()) {
-                return Type.RESOURCE;
-            } else {
-                throw new IllegalStateException(
-                        "Path does not represent a configuration resource: " + path);
+            } catch(IOException e) {
+                throw new IllegalStateException(e);
             }
         }
 
@@ -429,19 +479,86 @@ public class FileSystemResourceStore implements ResourceStore {
 
         @Override
         public boolean delete() {
-            return file.delete();
+            Lock lock = lock();
+            try {
+                return Files.delete(file);
+            } finally {
+                lock.release();
+            }
         }
 
         @Override
         public boolean renameTo(Resource dest) {
-            if(dest instanceof FileSystemResource) {
-                return file.renameTo(((FileSystemResource)dest).file);
-            } else if(dest instanceof Files.ResourceAdaptor) {
-                    return file.renameTo(((Files.ResourceAdaptor)dest).file);
-            } else {
-                return Resources.renameByCopy(this, dest);
+            if (dest.parent().path().contains(path())) {
+                LOGGER.log(Level.FINE, "Cannot rename a resource to a descendant of itself");
+                return false;
+            }
+            try {
+                if(dest instanceof FileSystemResource) {
+                    rename(file, ((FileSystemResource)dest).file);
+                } else if(dest instanceof Files.ResourceAdaptor) {
+                    rename(file, ((Files.ResourceAdaptor)dest).file);
+                } else {
+                    return Resources.renameByCopy(this, dest);
+                }
+            } catch (IOException e) {
+                LOGGER.log(Level.WARNING, "Failed to rename file resource "+path+" to "+dest.path(), e);
+                return false;
+            }
+            return true;
+        }
+        
+      
+        @Override
+        public byte[] getContents() throws IOException {
+            return java.nio.file.Files.readAllBytes(file.toPath());
+        }
+        
+        @Override
+        public void setContents(byte[] byteArray) throws IOException {
+            final File actualFile = file();
+            if (!actualFile.exists()) {
+                throw new IllegalStateException("Cannot access " + actualFile);
+            }
+            try {
+                // first save to a temp file
+                final File temp;
+                synchronized(this) {
+                    File tryTemp;
+                    do {
+                        UUID uuid = UUID.randomUUID();
+                        tryTemp = new File(actualFile.getParentFile(), String.format("%s.%s.tmp", actualFile.getName(), uuid));
+                    } while(tryTemp.exists());
+                    
+                    temp = tryTemp;
+                }
+                
+                java.nio.file.Files.write(temp.toPath(), byteArray);
+                Lock lock = lock();
+                try {
+                    // no errors, overwrite the original file
+                    Files.move(temp, actualFile);
+                } finally {
+                    lock.release();
+                }
+            } catch (FileNotFoundException e) {
+                throw new IllegalStateException("Cannot access " + actualFile, e);
             }
         }
+    }
 
+    @Override
+    public ResourceNotificationDispatcher getResourceNotificationDispatcher() {
+        if( watcher == null ){
+            watcher = new FileSystemWatcher(new FileSystemWatcher.FileExtractor() {
+
+                @Override
+                public File getFile(String path) {
+                    return Paths.toFile(baseDirectory, path);
+                }
+                
+            });
+        }
+        return watcher;
     }
 }

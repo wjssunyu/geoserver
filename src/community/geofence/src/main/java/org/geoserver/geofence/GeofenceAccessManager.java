@@ -1,5 +1,5 @@
 /*
- *  Copyright (C) 2007 - 2014 GeoSolutions S.A.S.
+ *  Copyright (C) 2007 - 2017 GeoSolutions S.A.S.
  *  http://www.geo-solutions.it
  *
  *  GPLv3 + Classpath exception
@@ -21,6 +21,7 @@ package org.geoserver.geofence;
 
 import java.io.IOException;
 import java.net.InetAddress;
+import java.net.URL;
 import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.List;
@@ -30,6 +31,7 @@ import java.util.logging.Logger;
 
 import javax.servlet.http.HttpServletRequest;
 
+import com.lowagie.text.Paragraph;
 import org.geoserver.catalog.Catalog;
 import org.geoserver.catalog.CatalogInfo;
 import org.geoserver.catalog.CoverageInfo;
@@ -70,10 +72,8 @@ import org.geoserver.security.VectorAccessLimits;
 import org.geoserver.security.WMSAccessLimits;
 import org.geoserver.security.WorkspaceAccessLimits;
 import org.geoserver.security.impl.GeoServerRole;
-import org.geoserver.wms.GetFeatureInfoRequest;
-import org.geoserver.wms.GetLegendGraphicRequest;
-import org.geoserver.wms.GetMapRequest;
-import org.geoserver.wms.MapLayerInfo;
+import org.geoserver.wms.*;
+import org.geoserver.wms.map.GetMapKvpRequestReader;
 import org.geotools.factory.CommonFactoryFinder;
 import org.geotools.filter.text.cql2.CQLException;
 import org.geotools.filter.text.ecql.ECQL;
@@ -104,6 +104,7 @@ import com.vividsolutions.jts.io.WKTReader;
  * Makes GeoServer use the Geofence to assess data access rules
  *
  * @author Andrea Aime - GeoSolutions
+ * @author Emanuele Tajariol- GeoSolutions
  */
 public class GeofenceAccessManager implements ResourceAccessManager, DispatcherCallback
 {
@@ -157,7 +158,8 @@ public class GeofenceAccessManager implements ResourceAccessManager, DispatcherC
     }
 
     @Override
-    public WorkspaceAccessLimits getAccessLimits(Authentication user, WorkspaceInfo workspace) {
+    public WorkspaceAccessLimits getAccessLimits(Authentication user, WorkspaceInfo workspace)
+    {
         LOGGER.log(Level.FINE, "Getting access limits for workspace {0}", workspace.getName());
 
         if ((user != null) && !(user instanceof AnonymousAuthenticationToken)) {
@@ -168,11 +170,48 @@ public class GeofenceAccessManager implements ResourceAccessManager, DispatcherC
 
                 return new WorkspaceAccessLimits(DEFAULT_CATALOG_MODE, true, true);
             }
-            return new WorkspaceAccessLimits(DEFAULT_CATALOG_MODE, true, configurationManager.getConfiguration().isGrantWriteToWorkspacesToAuthenticatedUsers());
+
+            boolean canWrite = configurationManager.getConfiguration().isGrantWriteToWorkspacesToAuthenticatedUsers();
+            boolean canAdmin = isWorkspaceAdmin(user, workspace.getName());
+
+            return new WorkspaceAccessLimits(DEFAULT_CATALOG_MODE, true, canWrite, canAdmin);
         }
 
         // further logic disabled because of https://github.com/geosolutions-it/geofence/issues/6
         return new WorkspaceAccessLimits(DEFAULT_CATALOG_MODE, true, false);
+    }
+
+    /**
+     * We expect the user not to be null and not to be admin
+     */
+    private boolean isWorkspaceAdmin(Authentication user, String workspaceName)
+    {
+        LOGGER.log(Level.FINE, "Getting admin auth for Workspace {0}", workspaceName);
+
+        // get the request infos
+        RuleFilter ruleFilter = new RuleFilter(RuleFilter.SpecialFilterType.ANY);
+
+        ruleFilter.setInstance(configurationManager.getConfiguration().getInstanceName());
+        ruleFilter.setWorkspace(workspaceName);
+        ruleFilter.setUser(user.getName());
+
+        String sourceAddress = retrieveCallerIpAddress();
+        if(sourceAddress != null) {
+            ruleFilter.setSourceAddress(sourceAddress);
+        } else {
+            LOGGER.log(Level.WARNING, "No source IP address found");
+            ruleFilter.setSourceAddress(RuleFilter.SpecialFilterType.DEFAULT);
+        }
+
+        if(LOGGER.isLoggable(Level.FINE)) {
+            LOGGER.log(Level.FINE, "AdminAuth filter: {0}", ruleFilter);
+        }
+
+        AccessInfo auth = rules.getAdminAuthorization(ruleFilter);
+
+        LOGGER.log(Level.FINE, "Admin auth for User:{0} Workspace:{1}: {2}", new Object[]{user.getName(), workspaceName, auth.getAdminRights()});
+
+        return auth.getAdminRights();
     }
 
     String getSourceAddress(HttpServletRequest http) {
@@ -209,24 +248,29 @@ public class GeofenceAccessManager implements ResourceAccessManager, DispatcherC
             }
             return sourceAddress;
         }
-        
+
         // try Spring
-        HttpServletRequest request = ((ServletRequestAttributes)RequestContextHolder.currentRequestAttributes()).getRequest();
-        String sourceAddress = getSourceAddress(request);
-        if(sourceAddress == null) {
-            LOGGER.log(Level.WARNING, "Could not retrieve source address from Spring Request");
+        try {
+            HttpServletRequest request = ((ServletRequestAttributes) RequestContextHolder.currentRequestAttributes()).getRequest();
+            String sourceAddress = getSourceAddress(request);
+            if(sourceAddress == null) {
+                LOGGER.log(Level.WARNING, "Could not retrieve source address with Spring Request");
+            }
+            return sourceAddress;
+        } catch (IllegalStateException ex) {
+            LOGGER.log(Level.WARNING, "Error retrieving source address with Spring Request: " + ex.getMessage());
+            return null;
         }
-        return sourceAddress;
     }
 
 
-    private WorkspaceAccessLimits buildAccessLimits(WorkspaceInfo workspace, AccessInfo rule) {
-        if (rule == null) {
-            return new WorkspaceAccessLimits(DEFAULT_CATALOG_MODE, true, true);
-        } else {
-            return new WorkspaceAccessLimits(DEFAULT_CATALOG_MODE, rule.getGrant() == GrantType.ALLOW, rule.getGrant() == GrantType.ALLOW);
-        }
-    }
+//    private WorkspaceAccessLimits buildAccessLimits(WorkspaceInfo workspace, AccessInfo rule) {
+//        if (rule == null) {
+//            return new WorkspaceAccessLimits(DEFAULT_CATALOG_MODE, true, true);
+//        } else {
+//            return new WorkspaceAccessLimits(DEFAULT_CATALOG_MODE, rule.getGrant() == GrantType.ALLOW, rule.getGrant() == GrantType.ALLOW);
+//        }
+//    }
 
     @Override
     public StyleAccessLimits getAccessLimits(Authentication user, StyleInfo style)
@@ -366,7 +410,7 @@ public class GeofenceAccessManager implements ResourceAccessManager, DispatcherC
                 }
                 LOGGER.log(Level.FINE, "Setting role for filter: {0}",
                         new Object[] { role });
-                ruleFilter.setUserGroup(role);
+                ruleFilter.setRole(role);
             } else {
                 String username = user.getName();
                 if (username == null) {
@@ -386,7 +430,7 @@ public class GeofenceAccessManager implements ResourceAccessManager, DispatcherC
 	/**
      * @param resource
      * @param rule
-     * @return
+     *
      */
     DataAccessLimits buildAccessLimits(ResourceInfo resource, AccessInfo rule)
     {
@@ -425,14 +469,13 @@ public class GeofenceAccessManager implements ResourceAccessManager, DispatcherC
                 WKTReader wktReader = new WKTReader();
                 area = wktReader.read(areaWkt);
 
-                if ((area != null) && (area.getSRID() > 0)) {
-                    CoordinateReferenceSystem geomCrs = CRS.decode("EPSG:" + area.getSRID());
+                if (area != null) {
+                    // rule area is always expressed as 4326
+                    CoordinateReferenceSystem geomCrs = CRS.decode("EPSG:4326");
                     CoordinateReferenceSystem resourceCrs = resource.getCRS();
                     if ((resourceCrs != null) && !CRS.equalsIgnoreMetadata(geomCrs, resourceCrs)) {
                         MathTransform mt = CRS.findMathTransform(geomCrs, resourceCrs, true);
                         area = JTS.transform(area, mt);
-//                        rule.setArea(area);
-                        rule.setAreaWkt(area.toString());
                     }
                 }
             } catch (ParseException e) {
@@ -520,7 +563,7 @@ public class GeofenceAccessManager implements ResourceAccessManager, DispatcherC
      *
      * @param filter
      * @param areaFilter
-     * @return
+     *
      */
     private Filter mergeFilter(Filter filter, Filter areaFilter) {
         if ((filter == null) || (filter == Filter.INCLUDE)) {
@@ -537,7 +580,7 @@ public class GeofenceAccessManager implements ResourceAccessManager, DispatcherC
      *
      * @param attributes
      * @param mode
-     * @return
+     *
      */
     private List<PropertyName> toPropertyNames(Set<LayerAttribute> attributes,
             PropertyAccessMode mode) {
@@ -684,7 +727,7 @@ public class GeofenceAccessManager implements ResourceAccessManager, DispatcherC
         }
     }
 
-    private void overrideGetMapRequest(Request gsRequest, String service, String request, 
+    void overrideGetMapRequest(Request gsRequest, String service, String request,
     		Authentication user, GetMapRequest getMap)
     {
 		if (gsRequest.getKvp().get("layers") == null
@@ -693,22 +736,11 @@ public class GeofenceAccessManager implements ResourceAccessManager, DispatcherC
             throw new ServiceException("GetMap POST requests are forbidden");
         }
 		
-        // check for dynamic style
-        if ((getMap.getSld() != null) || (getMap.getSldBody() != null)) {
-            if( !configurationManager.getConfiguration().isAllowDynamicStyles() ) {
-                throw new ServiceException("Dynamic style usage is forbidden");
-            }
-        }
 
         // parse the styles param like the kvp parser would (since we have no way,
         // to know if a certain style was requested explicitly or defaulted, and
         // we need to tell apart the default case from the explicit request case
-        String stylesParam = (String) gsRequest.getRawKvp().get("STYLES");
-        List<String> styleNameList = new ArrayList<String>();
-        if (stylesParam != null)
-        {
-            styleNameList.addAll(KvpUtils.readFlat(stylesParam));
-        }
+        List<String> styleNameList = getRequestedStyles(gsRequest, getMap);
 
         // apply the override/security check for each layer in the request
         List<MapLayerInfo> layers = getMap.getLayers();
@@ -743,7 +775,7 @@ public class GeofenceAccessManager implements ResourceAccessManager, DispatcherC
             AccessInfo rule = rules.getAccessInfo(ruleFilter);
 
             // get the requested style name
-            String styleName = (styleNameList.size() > 0) ? styleNameList.get(i) : null;
+            String styleName = styleNameList.get(i);
 
             // if default use geofence default
             if (styleName != null) {
@@ -766,38 +798,6 @@ public class GeofenceAccessManager implements ResourceAccessManager, DispatcherC
                     throw new ServiceException("Unable to load the style suggested by Geofence: " +
                         rule.getDefaultStyle(), e);
                 }
-            }
-        }
-    }
-
-    /**
-     *
-     * Allow dynamic styling only when there's no style restriction.
-     *
-     * We may update the model by adding a "allow dyn style" permission,
-     * but it would break current installations.
-     * We can infer this authorization by verifying if any style constraint is in place:
-     * It means that both of these conditions should be verified:
-     * 1) rule.getAllowedStyles() != null
-     *    - -> no style restriction has been defined in the rule details
-     * 2) the number of allowed styles should be less than than the number of total styles
-     *    --> generally, you can't delete the restricted style list once it has been defined.
-     *      > We assume that if all the available styles have been allowed, then there should be no
-     *      > style restrictions. We're only comparing the number of the available styles, but a
-     *      > better approach would be to make sure all of the available styles (maybe identified by name)
-     *      > are currently allowed.
-     *
-     * @param getMap
-     * @param rule
-     * @param layer
-     * @throws ServiceException if dyn style usage is forbidden
-     */
-    protected void checkDynStyles(GetMapRequest getMap, AccessInfo rule, MapLayerInfo layer) throws ServiceException {
-        if ((getMap.getSld() != null) || (getMap.getSldBody() != null))
-        {
-            if( !configurationManager.getConfiguration().isAllowDynamicStyles() ) {
-                LOGGER.info("Denying dynamic style; allowed#"+rule.getAllowedStyles().size() + " avail#"+layer.getLayerInfo().getStyles().size());
-                throw new ServiceException("Dynamic style usage is forbidden");
             }
         }
     }
@@ -838,6 +838,67 @@ public class GeofenceAccessManager implements ResourceAccessManager, DispatcherC
         return service;
     }
 
-    
- 
+    /**
+     * Returns a list that contains the request styles that will correspond to the GetMap.getLayers().
+     * Layer groups are expanded in layers and the associated styles are set to null (layers
+     * groups can't use dynamic styles).
+     */
+    private List<String> getRequestedStyles(Request gsRequest, GetMapRequest getMap) {
+        List<String> requestedStyles = new ArrayList<>();
+        int styleIndex = 0;
+        List<String> parsedStyles = parseStylesParameter(gsRequest);
+        for(Object layer : parseLayersParameter(gsRequest, getMap)) {
+            if (layer  instanceof LayerGroupInfo) {
+                // a LayerGroup don't have styles so we just add null
+                for (int i = 0; i < ((LayerGroupInfo) layer).getLayers().size(); i++) {
+                    requestedStyles.add(null);
+                }
+            } else {
+                // the layer is a LayerInfo or MapLayerInfo (if it is a remote layer)
+                if(styleIndex >= parsedStyles.size()) {
+                    requestedStyles.add(null);
+                }
+                else {
+                    requestedStyles.add(parsedStyles.get(styleIndex));
+                }
+            }
+            styleIndex++;
+        }
+        return requestedStyles;
+    }
+
+    private List<Object> parseLayersParameter(Request gsRequest, GetMapRequest getMap) {
+        String rawLayersParameter = (String) gsRequest.getRawKvp().get("LAYERS");
+        if (rawLayersParameter != null) {
+            List<String> layersNames = KvpUtils.readFlat(rawLayersParameter);
+            return new LayersParser().parseLayers(layersNames, getMap.getRemoteOwsURL(), getMap.getRemoteOwsType());
+        }
+        return new ArrayList<>();
+    }
+
+    private List<String> parseStylesParameter(Request gsRequest) {
+        String rawStylesParameter = (String) gsRequest.getRawKvp().get("STYLES");
+        if (rawStylesParameter != null) {
+            return KvpUtils.readFlat(rawStylesParameter);
+        }
+        return new ArrayList<>();
+    }
+
+    /**
+     * An helper that avoids duplicating the code to parse the layers parameter
+     */
+    static final class LayersParser extends GetMapKvpRequestReader {
+
+        public LayersParser() {
+            super(WMS.get());
+        }
+
+        public List parseLayers(List<String> requestedLayerNames, URL remoteOwsUrl, String remoteOwsType) {
+            try {
+                return super.parseLayers(requestedLayerNames, remoteOwsUrl, remoteOwsType);
+            } catch (Exception exception) {
+                throw new ServiceException("Error parsing requested layers.", exception);
+            }
+        }
+    }
 }

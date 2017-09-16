@@ -1,4 +1,4 @@
-/* (c) 2014 Open Source Geospatial Foundation - all rights reserved
+/* (c) 2014 - 2016 Open Source Geospatial Foundation - all rights reserved
  * (c) 2001 - 2013 OpenPlans
  * This code is licensed under the GPL 2.0 license, available at the root
  * application directory.
@@ -37,7 +37,7 @@ import org.junit.After;
 import org.junit.Before;
 import org.opengis.coverage.grid.GridCoverage;
 
-import com.mockrunner.mock.web.MockHttpServletResponse;
+import org.springframework.mock.web.MockHttpServletResponse;
 
 /**
  * Base support class for wcs EO tests.
@@ -89,6 +89,7 @@ public abstract class WCSEOTestSupport extends GeoServerSystemTestSupport {
     @Override
     protected void setUpTestData(SystemTestData testData) throws Exception {
         // do not setup anything here, we'll setup mosaics later
+        testData.setUpSecurity();
     }
 
     @Override
@@ -147,7 +148,7 @@ public abstract class WCSEOTestSupport extends GeoServerSystemTestSupport {
      * Parses a multipart message from the response
      * 
      * @param response
-     * @return
+     *
      * @throws MessagingException
      * @throws IOException
      */

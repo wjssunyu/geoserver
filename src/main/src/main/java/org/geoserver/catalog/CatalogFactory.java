@@ -26,9 +26,19 @@ public interface CatalogFactory {
     WMSStoreInfo createWebMapServer();
 
     /**
+     * Creates a new Web Map Tile Server connection.
+     */
+    WMTSStoreInfo createWebMapTileServer();
+
+    /**
      * Creats a new metadata link.
      */
     MetadataLinkInfo createMetadataLink();
+
+    /**
+     * Creates a new data link.
+     */
+    DataLinkInfo createDataLink();
 
     /**
      * Creates a new coverage store.
@@ -55,6 +65,11 @@ public interface CatalogFactory {
      */
     WMSLayerInfo createWMSLayer();
 
+
+    /**
+     * creates a new WMTS layer
+     */
+    WMTSLayerInfo createWMTSLayer();
 
     /**
      * Creates a new coverage dimension.

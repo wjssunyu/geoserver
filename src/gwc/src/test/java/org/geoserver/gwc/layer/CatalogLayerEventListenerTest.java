@@ -1,4 +1,4 @@
-/* (c) 2014 Open Source Geospatial Foundation - all rights reserved
+/* (c) 2014 - 2015 Open Source Geospatial Foundation - all rights reserved
  * (c) 2001 - 2013 OpenPlans
  * This code is licensed under the GPL 2.0 license, available at the root
  * application directory.
@@ -9,16 +9,8 @@ import static junit.framework.Assert.assertEquals;
 import static junit.framework.Assert.assertNotNull;
 import static junit.framework.Assert.assertSame;
 import static org.geoserver.gwc.GWC.tileLayerName;
-import static org.mockito.Matchers.any;
-import static org.mockito.Matchers.anyString;
-import static org.mockito.Matchers.argThat;
-import static org.mockito.Matchers.eq;
-import static org.mockito.Matchers.same;
-import static org.mockito.Mockito.atMost;
-import static org.mockito.Mockito.mock;
-import static org.mockito.Mockito.times;
-import static org.mockito.Mockito.verify;
-import static org.mockito.Mockito.when;
+import static org.mockito.Matchers.*;
+import static org.mockito.Mockito.*;
 
 import java.util.Arrays;
 import java.util.Collections;
@@ -34,7 +26,6 @@ import org.geoserver.catalog.LayerInfo;
 import org.geoserver.catalog.MetadataMap;
 import org.geoserver.catalog.NamespaceInfo;
 import org.geoserver.catalog.PublishedInfo;
-import org.geoserver.catalog.ResourceInfo;
 import org.geoserver.catalog.StyleInfo;
 import org.geoserver.catalog.WorkspaceInfo;
 import org.geoserver.catalog.event.CatalogModifyEvent;
@@ -71,7 +62,7 @@ public class CatalogLayerEventListenerTest {
 
     private LayerInfo mockLayerInfo;
 
-    private ResourceInfo mockResourceInfo;
+    private FeatureTypeInfo mockResourceInfo;
 
     private NamespaceInfo mockNamespaceInfo;
 
@@ -107,7 +98,7 @@ public class CatalogLayerEventListenerTest {
         mockNamespaceInfo = mock(NamespaceInfo.class);
         
         mockDefaultStyle = mock(StyleInfo.class);
-        when(mockDefaultStyle.getName()).thenReturn("defaultStyle");
+        when(mockDefaultStyle.prefixedName()).thenReturn("defaultStyle");
 
         when(mockLayerGroupInfo.getName()).thenReturn(LAYER_GROUP_NAME);
         when(mockLayerGroupInfo.prefixedName()).thenReturn(LAYER_GROUP_NAME);
@@ -210,6 +201,41 @@ public class CatalogLayerEventListenerTest {
         GeoServerTileLayerInfo savedInfo = saved.getInfo();
         assertSame(info, savedInfo);
         assertEquals(renamedPrefixedResouceName, savedInfo.getName());
+    }
+
+    @Test
+    public void testCqlFilterChanged() throws Exception {
+        // change the cql filter
+        String cqlFilter = "name LIKE 'Foo%'";
+        when(mockResourceInfo.getCqlFilter()).thenReturn(cqlFilter);
+
+        CatalogModifyEvent modifyEvent = mock(CatalogModifyEvent.class);
+        when(modifyEvent.getSource()).thenReturn(mockResourceInfo);
+        when(modifyEvent.getPropertyNames()).thenReturn(Arrays.asList("cqlFilter"));
+        when(modifyEvent.getOldValues()).thenReturn(Arrays.asList((Object) null));
+        when(modifyEvent.getNewValues()).thenReturn(Arrays.asList((Object) cqlFilter));
+
+        GeoServerTileLayerInfo info = TileLayerInfoUtil.loadOrCreate(mockLayerInfo,
+                GWCConfig.getOldDefaults());
+        GeoServerTileLayer tileLayer = mock(GeoServerTileLayer.class);
+        when(mockMediator.hasTileLayer(same(mockResourceInfo))).thenReturn(true);
+        when(tileLayer.getInfo()).thenReturn(info);
+        when(tileLayer.getLayerInfo()).thenReturn(mockLayerInfo);
+
+        when(mockMediator.getTileLayer(same(mockResourceInfo))).thenReturn(tileLayer);
+        String resourceName = mockResourceInfo.prefixedName();
+        when(mockMediator.getTileLayerByName(eq(resourceName))).thenReturn(tileLayer);
+
+        listener.handleModifyEvent(modifyEvent);
+
+        verify(mockMediator, times(1)).hasTileLayer(same(mockResourceInfo));
+
+        CatalogPostModifyEvent postModifyEvent = mock(CatalogPostModifyEvent.class);
+        when(postModifyEvent.getSource()).thenReturn(mockResourceInfo);
+
+        listener.handlePostModifyEvent(postModifyEvent);
+
+        verify(mockMediator).truncate(eq(resourceName));
     }
 
     @Test public void testLayerGroupInfoRenamed() throws Exception {
@@ -422,9 +448,9 @@ public class CatalogLayerEventListenerTest {
         final String newName = "newStyle";
 
         StyleInfo oldStyle = mock(StyleInfo.class);
-        when(oldStyle.getName()).thenReturn(oldName);
+        when(oldStyle.prefixedName()).thenReturn(oldName);
         StyleInfo newStyle = mock(StyleInfo.class);
-        when(newStyle.getName()).thenReturn(newName);
+        when(newStyle.prefixedName()).thenReturn(newName);
 
         when(mockLayerInfo.getDefaultStyle()).thenReturn(newStyle);
 
@@ -471,17 +497,17 @@ public class CatalogLayerEventListenerTest {
     @Test public void testLayerInfoAlternateStylesChanged() throws Exception {
 
         StyleInfo removedStyle = mock(StyleInfo.class);
-        when(removedStyle.getName()).thenReturn("removedStyleName");
+        when(removedStyle.prefixedName()).thenReturn("removedStyleName");
 
         StyleInfo remainingStyle = mock(StyleInfo.class);
-        when(remainingStyle.getName()).thenReturn("remainingStyle");
+        when(remainingStyle.prefixedName()).thenReturn("remainingStyle");
 
         final Set<StyleInfo> oldStyles = new HashSet<StyleInfo>(Arrays.asList(remainingStyle,
                 removedStyle));
         when(mockLayerInfo.getStyles()).thenReturn(oldStyles);
 
         StyleInfo addedStyle = mock(StyleInfo.class);
-        when(addedStyle.getName()).thenReturn("addedStyleName");
+        when(addedStyle.prefixedName()).thenReturn("addedStyleName");
         final Set<StyleInfo> newStyles = new HashSet<StyleInfo>(Arrays.asList(addedStyle,
                 remainingStyle));
 

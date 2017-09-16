@@ -11,7 +11,7 @@
  <parent>
   <groupId>org.geoserver</groupId>
   <artifactId>geoserver</artifactId>
-  <version>2.7-SNAPSHOT</version>
+  <version>2.12-SNAPSHOT</version>
  </parent>
  
  <groupId>org.geoserver</groupId>
@@ -31,8 +31,15 @@
    <scope>test</scope>
   </dependency>
   <dependency>
+   <groupId>org.geoserver</groupId>
+   <artifactId>gs-platform</artifactId>
+   <classifier>tests</classifier>
+   <scope>test</scope>
+  </dependency>
+  <dependency>
    <groupId>javax.servlet</groupId>
-   <artifactId>servlet-api</artifactId>
+   <artifactId>javax.servlet-api</artifactId>
+   <scope>provided</scope>
   </dependency>
   <dependency>
    <groupId>net.sf.json-lib</groupId>
@@ -42,6 +49,7 @@
   <dependency>
    <groupId>commons-beanutils</groupId>
    <artifactId>commons-beanutils</artifactId>
+   <classifier>noclassprop</classifier>
   </dependency>
   <dependency>
    <groupId>commons-fileupload</groupId>
@@ -78,6 +86,10 @@
   <dependency>
    <groupId>org.geotools</groupId>
    <artifactId>gt-jdbc</artifactId>
+  </dependency>
+  <dependency>
+   <groupId>org.geotools</groupId>
+   <artifactId>gt-wfs-ng</artifactId>
   </dependency>
   <dependency>
    <groupId>org.geotools</groupId>
@@ -119,10 +131,20 @@
     <groupId>com.google.code.findbugs</groupId>
     <artifactId>jsr305</artifactId>
   </dependency>
+  <dependency>
+    <groupId>it.geosolutions.jaiext.concurrent-tile-cache</groupId>
+    <artifactId>jt-concurrent-tile-cache</artifactId>
+    <exclusions>
+       <exclusion>
+          <groupId>com.vividsolutions</groupId>
+          <artifactId>jts</artifactId>
+       </exclusion>
+    </exclusions>
+  </dependency>
   
   <dependency>
-   <groupId>com.mockrunner</groupId>
-   <artifactId>mockrunner</artifactId>
+   <groupId>org.springframework</groupId>
+   <artifactId>spring-test</artifactId>
    <scope>test</scope>
   </dependency>
   <dependency>
@@ -175,11 +197,6 @@
    <artifactId>gt-imagemosaic</artifactId>
   </dependency>
   <dependency>
-   <groupId>org.geotools</groupId>
-   <artifactId>gt-wfs-ng</artifactId>
-   <scope>test</scope>
-  </dependency>
-  <dependency>
   <groupId>org.geotools.jdbc</groupId>
    <artifactId>gt-jdbc-postgis</artifactId>
    <scope>test</scope>
@@ -214,9 +231,24 @@
    </dependency>
    <dependency>
     <groupId>org.bouncycastle</groupId>
-    <artifactId>bcprov-jdk14</artifactId>    
+    <artifactId>bcprov-jdk15on</artifactId>    
   </dependency>
- </dependencies> 
+  <dependency>
+    <groupId>org.geotools.jdbc</groupId>
+    <artifactId>gt-jdbc-h2</artifactId>
+    <version>${gt.version}</version>
+    <scope>test</scope>
+  </dependency>
+     <dependency>
+         <groupId>org.codehaus.jettison</groupId>
+         <artifactId>jettison</artifactId>
+     </dependency>
+     <dependency>
+     	<groupId>org.geotools</groupId>
+     	<artifactId>gt-wmts</artifactId>
+     	<version>${gt.version}</version>
+     </dependency>
+ </dependencies>
 
  <build>
   <plugins>

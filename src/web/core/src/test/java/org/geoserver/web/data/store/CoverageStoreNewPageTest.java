@@ -1,16 +1,22 @@
-/* (c) 2014 Open Source Geospatial Foundation - all rights reserved
+/* (c) 2014 - 2016 Open Source Geospatial Foundation - all rights reserved
  * (c) 2001 - 2013 OpenPlans
  * This code is licensed under the GPL 2.0 license, available at the root
  * application directory.
  */
 package org.geoserver.web.data.store;
 
-import static org.junit.Assert.*;
+import static org.hamcrest.CoreMatchers.instanceOf;
+import static org.junit.Assert.assertNull;
+import static org.junit.Assert.assertThat;
+import static org.junit.Assert.assertTrue;
+import static org.junit.Assert.fail;
 
+import org.apache.wicket.Component;
 import org.geoserver.web.GeoServerWicketTestSupport;
+import org.geoserver.web.data.store.panel.FileParamPanel;
 import org.geoserver.web.data.store.panel.WorkspacePanel;
-import org.geotools.gce.arcgrid.ArcGridFormatFactory;
 import org.geotools.gce.gtopo30.GTopo30FormatFactory;
+import org.geotools.geopkg.mosaic.GeoPackageFormat;
 import org.junit.Before;
 import org.junit.Test;
 import org.opengis.coverage.grid.Format;
@@ -26,7 +32,6 @@ public class CoverageStoreNewPageTest extends GeoServerWicketTestSupport {
 
     String formatDescription;
 
-    @SuppressWarnings("deprecation")
     @Before
     public void init() {
         Format format = new GTopo30FormatFactory().createFormat();
@@ -82,7 +87,7 @@ public class CoverageStoreNewPageTest extends GeoServerWicketTestSupport {
         assertNull(page.getDefaultModelObject());
 
         tester.assertModelValue("rasterStoreForm:enabledPanel:paramValue", Boolean.TRUE);
-        tester.assertModelValue("rasterStoreForm:workspacePanel:border:paramValue", getCatalog()
+        tester.assertModelValue("rasterStoreForm:workspacePanel:border:border_body:paramValue", getCatalog()
                 .getDefaultWorkspace());
         tester.assertModelValue("rasterStoreForm:parametersPanel:url",
                 "file:data/example.extension");
@@ -96,10 +101,21 @@ public class CoverageStoreNewPageTest extends GeoServerWicketTestSupport {
         assertNull(page.getDefaultModelObject());
 
         tester.assertModelValue("rasterStoreForm:enabledPanel:paramValue", Boolean.TRUE);
-        tester.assertModelValue("rasterStoreForm:workspacePanel:border:paramValue", getCatalog()
+        tester.assertModelValue("rasterStoreForm:workspacePanel:border:border_body:paramValue", getCatalog()
                 .getDefaultWorkspace());
         tester.assertModelValue("rasterStoreForm:parametersPanel:url",
                 "file:data/example.extension");
 
+    }
+    
+    @Test
+    public void testGeoPackageRaster() {
+        formatType = new GeoPackageFormat().getName();
+        final CoverageStoreNewPage page = new CoverageStoreNewPage(formatType);
+        tester.startPage(page);
+        
+        tester.debugComponentTrees();
+        Component urlComponent = tester.getComponentFromLastRenderedPage("rasterStoreForm:parametersPanel:url");
+        assertThat(urlComponent, instanceOf(FileParamPanel.class));
     }
 }

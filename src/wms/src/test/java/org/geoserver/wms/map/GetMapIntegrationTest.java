@@ -1,19 +1,18 @@
-/* (c) 2014 Open Source Geospatial Foundation - all rights reserved
+/* (c) 2014 - 2016 Open Source Geospatial Foundation - all rights reserved
  * (c) 2001 - 2013 OpenPlans
  * This code is licensed under the GPL 2.0 license, available at the root
  * application directory.
  */
 package org.geoserver.wms.map;
 
-import static junit.framework.Assert.*;
-import static org.custommonkey.xmlunit.XMLAssert.*;
+import static org.junit.Assert.*;
+import static org.custommonkey.xmlunit.XMLAssert.assertXpathEvaluatesTo;
 
 import java.awt.Color;
 import java.awt.image.BufferedImage;
 import java.awt.image.DataBufferByte;
 import java.awt.image.RenderedImage;
-import java.io.File;
-import java.io.StringWriter;
+import java.io.*;
 import java.util.Arrays;
 import java.util.HashMap;
 import java.util.Map;
@@ -26,19 +25,24 @@ import org.custommonkey.xmlunit.NamespaceContext;
 import org.custommonkey.xmlunit.SimpleNamespaceContext;
 import org.custommonkey.xmlunit.XMLUnit;
 import org.geoserver.catalog.Catalog;
+import org.geoserver.catalog.LayerGroupInfo;
 import org.geoserver.catalog.PropertyStyleHandler;
+import org.geoserver.catalog.StyleInfo;
 import org.geoserver.config.GeoServerInfo;
 import org.geoserver.data.test.CiteTestData;
 import org.geoserver.data.test.MockData;
 import org.geoserver.data.test.SystemTestData;
 import org.geoserver.data.test.SystemTestData.LayerProperty;
+import org.geoserver.wms.GetMapRequest;
+import org.geoserver.wms.WMS;
 import org.geoserver.wms.WMSTestSupport;
 import org.geotools.image.ImageWorker;
 import org.geotools.image.test.ImageAssert;
+import org.geotools.styling.Style;
 import org.junit.Test;
 import org.w3c.dom.Document;
 
-import com.mockrunner.mock.web.MockHttpServletResponse;
+import org.springframework.mock.web.MockHttpServletResponse;
 
 public class GetMapIntegrationTest extends WMSTestSupport {
 
@@ -56,7 +60,7 @@ public class GetMapIntegrationTest extends WMSTestSupport {
         testData.addStyle("crop_raster","CropTransform.sld",getClass(),catalog);
         testData.addStyle("lakeScale", "lakeScale.sld", getClass(), catalog);
  
-        Map props = new HashMap();
+        Map<LayerProperty, Object> props = new HashMap<>();
         props.put(LayerProperty.STYLE, "indexed");
         
         testData.addRasterLayer(new QName(MockData.SF_URI, "indexed", MockData.SF_PREFIX), 
@@ -72,6 +76,15 @@ public class GetMapIntegrationTest extends WMSTestSupport {
 
         testData.addRasterLayer(new QName(MockData.SF_URI, "fourbits", MockData.SF_PREFIX), 
                 "fourbits.zip", null, props,SystemTestData.class,catalog);
+
+        testData.addStyle("BasicStyleGroup", "BasicStyleGroup.sld", GetMapKvpRequestReaderTest.class, getCatalog());
+        LayerGroupInfo lg = catalog.getFactory().createLayerGroup();
+        StyleInfo s = catalog.getStyleByName("BasicStyleGroup");
+
+        lg.setName("BasicStyleGroup");
+        lg.getLayers().add(null);
+        lg.getStyles().add(s);
+        catalog.add(lg);
         
     }
     
@@ -177,7 +190,7 @@ public class GetMapIntegrationTest extends WMSTestSupport {
     }
     
     /**
-     * http://jira.codehaus.org/browse/GEOS-4893, make meta-tiler work
+     * https://osgeo-org.atlassian.net/browse/GEOS-4893, make meta-tiler work
      * with WMS 1.3 as well
      * @throws Exception 
      */
@@ -255,6 +268,18 @@ public class GetMapIntegrationTest extends WMSTestSupport {
     }
 
     @Test
+    public void testRasterRenderingTxOutOfBbox() throws Exception {
+        String layer = getLayerId(MockData.USA_WORLDIMG);
+        String url = "wms?service=WMS&VERSION=1.1.1&request=GetMap&styles=crop_raster"
+                + "&format=image/png&layers="  + layer + "&WIDTH=100&HEIGHT=100"
+                + "&srs=epsg:4326&BBOX=-120,40,-115,45";
+        BufferedImage image = getAsImage(url, "image/png");
+        Color color = getPixelColor(image, 25, 25);
+        // the color is white, or white-ish
+        assertTrue(color.getRed() + color.getGreen() + color.getBlue() > (250 * 3));
+    }
+
+    @Test
     public void testGetMapWithPropertyStyle() throws Exception {
         Properties props = new Properties();
         props.put("type", "point");
@@ -286,5 +311,41 @@ public class GetMapIntegrationTest extends WMSTestSupport {
 
         bi = getAsImage(request + "&scaleMethod=Accurate", "image/png");
         assertBlank("Image should not contain the polygon, scale is just below 1:20", bi);
+    }
+
+    @Test
+    public void testStyleGroup() throws Exception {
+        WMS wms = new WMS(getGeoServer());
+        GetMapKvpRequestReader reader = new GetMapKvpRequestReader(wms);
+        // asserts the a layerGroup can be created with null layer and a styleGroup sld
+        HashMap kvp = new HashMap();
+        kvp.put("layers", "BasicStyleGroup");
+        kvp.put("styles", "");
+
+        GetMapRequest request = reader.createRequest();
+        request = reader.read(request, parseKvp(kvp), kvp);
+
+        assertNotNull(request.getLayers());
+        assertNotNull(request.getStyles());
+    }
+
+    public void testResolveLayersForStyleGroup() throws Exception {
+        WMS wms = new WMS(getGeoServer());
+        GetMapXmlReader reader = new GetMapXmlReader(wms);
+
+        GetMapRequest request = reader.createRequest();
+        InputStream resourceStream = getClass().getResource("WMSPostLayerGroupWithStyleGroup.xml").openStream();
+        BufferedReader input = new BufferedReader(new InputStreamReader(resourceStream));
+
+        request = (GetMapRequest) reader.read(request, input, new HashMap());
+
+        String layer = MockData.BASIC_POLYGONS.getLocalPart();
+        assertEquals(1, request.getLayers().size());
+        assertTrue(request.getLayers().get(0).getName().endsWith(layer));
+
+        assertEquals(1, request.getStyles().size());
+        Style expected = getCatalog().getStyleByName("BasicStyleGroup").getStyle();
+        Style style = request.getStyles().get(0);
+        assertEquals(expected, style);
     }
 }

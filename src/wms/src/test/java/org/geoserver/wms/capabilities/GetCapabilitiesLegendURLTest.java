@@ -1,4 +1,4 @@
-/* (c) 2014 Open Source Geospatial Foundation - all rights reserved
+/* (c) 2014 - 2015 Open Source Geospatial Foundation - all rights reserved
  * (c) 2014 OpenPlans
  * This code is licensed under the GPL 2.0 license, available at the root
  * application directory.
@@ -12,6 +12,7 @@ import static org.junit.Assert.assertTrue;
 
 import java.io.File;
 import java.io.IOException;
+import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.Map;
@@ -33,6 +34,7 @@ import org.geoserver.data.test.MockData;
 import org.geoserver.data.test.SystemTestData;
 import org.geoserver.data.test.SystemTestData.LayerProperty;
 import org.geoserver.ows.LocalWorkspace;
+import org.geoserver.ows.util.KvpUtils;
 import org.geoserver.platform.GeoServerExtensions;
 import org.geoserver.platform.GeoServerResourceLoader;
 import org.geoserver.platform.resource.Paths;
@@ -101,6 +103,7 @@ public abstract class GetCapabilitiesLegendURLTest extends WMSTestSupport {
     /** Test layers */
     public static QName SQUARES = new QName(MockData.CITE_URI, "squares", MockData.CITE_PREFIX);
     public static QName STATES = new QName(MockData.CITE_URI, "states", MockData.CITE_PREFIX);
+    public static QName WORLD = new QName("http://www.geo-solutions.it", "world", "gs");
     
     
     /**
@@ -127,6 +130,11 @@ public abstract class GetCapabilitiesLegendURLTest extends WMSTestSupport {
         testData.addVectorLayer(STATES,properties,"states.properties",
                 GetCapabilitiesLegendURLTest.class,catalog);
         LocalWorkspace.set(null);
+
+        testData.addStyle("temperature", "temperature.sld", WMSTestSupport.class, catalog);
+        properties = new HashMap<LayerProperty, Object>();
+        properties.put(LayerProperty.STYLE, "temperature");
+        testData.addRasterLayer(WORLD, "world.tiff", null, properties, SystemTestData.class, catalog);
     }
     
     @Before
@@ -175,7 +183,6 @@ public abstract class GetCapabilitiesLegendURLTest extends WMSTestSupport {
     /**
      * Tests that already cached icons are read from disk and
      * used to calculate size.
-     * @throws Exception
      */
     @Test
     public void testCachedLegendURLSize() throws Exception {
@@ -196,7 +203,6 @@ public abstract class GetCapabilitiesLegendURLTest extends WMSTestSupport {
     
     /**
      * Tests that folder for legend samples is created, if missing.
-     * @throws Exception
      */
     @Test
     public void testCachedLegendURLFolderCreated() throws Exception {
@@ -213,9 +219,26 @@ public abstract class GetCapabilitiesLegendURLTest extends WMSTestSupport {
     }
 
     /**
+     * Tests the layer names are workspace qualified
+     * 
+     */
+    @Test
+    public void testLayerWorkspaceQualified() throws Exception {
+
+        TransformerBase tr = createTransformer();
+        tr.setIndentation(2);
+        Document dom = WMSTestSupport.transform(req, tr);
+        // print(dom);
+
+        String legendURL = XPATH.evaluate(getLegendURLXPath("cite:squares") + "/"
+                + getElementPrefix() + "OnlineResource/@xlink:href", dom);
+        Map<String, Object> kvp = KvpUtils.parseQueryString(legendURL);
+        assertEquals("cite:squares", kvp.get("layer"));
+    }
+
+    /**
      * Tests that not existing icons are created on disk and
      * used to calculate size.
-     * @throws Exception
      */
     @Test
     public void testCreatedLegendURLSize() throws Exception {
@@ -239,6 +262,25 @@ public abstract class GetCapabilitiesLegendURLTest extends WMSTestSupport {
         assertTrue(sampleFile.exists());
     }
 
+    @Test
+    public void testCreatedRasterLegendURLSize() throws Exception {
+        TransformerBase tr = createTransformer();
+        tr.setIndentation(2);
+        Document dom = WMSTestSupport.transform(req, tr);
+
+        NodeList legendURLs = XPATH.getMatchingNodes(
+                getLegendURLXPath("gs:world"), dom);
+        assertEquals(1, legendURLs.getLength());
+        Element legendURL = (Element) legendURLs.item(0);
+        assertTrue(legendURL.hasAttribute("width"));
+        assertFalse("20".equals(legendURL.getAttribute("width")));
+        assertTrue(legendURL.hasAttribute("height"));
+        assertFalse("20".equals(legendURL.getAttribute("height")));
+
+        File sampleFile = getSampleFile("temperature");
+        assertTrue(sampleFile.exists());
+    }
+
     private File getSampleFile(String sampleName) {
         return new File(testData.getDataDirectoryRoot().getAbsolutePath()
                 + File.separator + LegendSampleImpl.LEGEND_SAMPLES_FOLDER + File.separator
@@ -248,7 +290,6 @@ public abstract class GetCapabilitiesLegendURLTest extends WMSTestSupport {
     /**
      * Tests that not existing icons for workspace bound styles are created on disk
      * in the workspace styles folder.
-     * @throws Exception
      */
     @Test
     public void testCreatedLegendURLFromWorkspaceSize() throws Exception {
@@ -275,7 +316,6 @@ public abstract class GetCapabilitiesLegendURLTest extends WMSTestSupport {
     /**
      * Tests that already cached icons are recreated if related
      * SLD is newer.
-     * @throws Exception
      */
     @Test
     public void testCachedLegendURLUpdatedSize() throws Exception {
@@ -310,7 +350,6 @@ public abstract class GetCapabilitiesLegendURLTest extends WMSTestSupport {
     /**
      * Tests that already cached icons are recreated if related
      * SLD is newer (using Catalog events).
-     * @throws Exception
      */
     @Test
     public void testCachedLegendURLUpdatedSize2() throws Exception {
@@ -323,7 +362,7 @@ public abstract class GetCapabilitiesLegendURLTest extends WMSTestSupport {
         long previousTime = sldResource.lastmodified();
         sldResource.file().setLastModified(lastTime + 1000);
         
-        catalog.firePostModified(catalog.getStyleByName("Bridges"));
+        catalog.firePostModified(catalog.getStyleByName("Bridges"), new ArrayList<String>(), new ArrayList(), new ArrayList());
         
         TransformerBase tr = createTransformer();
         tr.setIndentation(2);
@@ -344,7 +383,6 @@ public abstract class GetCapabilitiesLegendURLTest extends WMSTestSupport {
     /**
      * Tests that already cached icons are read from disk and
      * used to calculate size.
-     * @throws Exception
      */
     @Test
     public void testOnlineResourceWidthHeight() throws Exception {
@@ -393,21 +431,21 @@ public abstract class GetCapabilitiesLegendURLTest extends WMSTestSupport {
     /**
      * Each WMS version suite of tests has its own TransformerBase implementation.
      *  
-     * @return
+     *
      */
     protected abstract TransformerBase createTransformer();
 
     /**
      * Each WMS version has a different root name for the Capabilities XML document.
      *  
-     * @return
+     *
      */
     protected abstract String getRootElement();
     
     /**
      * Each WMS version uses a different element prefix.
      *  
-     * @return
+     *
      */
     protected abstract String getElementPrefix();
 

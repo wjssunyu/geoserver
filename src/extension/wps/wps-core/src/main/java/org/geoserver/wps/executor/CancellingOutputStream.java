@@ -1,4 +1,4 @@
-/* (c) 2014 Open Source Geospatial Foundation - all rights reserved
+/* (c) 2014 - 2015 Open Source Geospatial Foundation - all rights reserved
  * This code is licensed under the GPL 2.0 license, available at the root
  * application directory.
  */
@@ -29,26 +29,26 @@ class CancellingOutputStream extends FilterOutputStream {
 
     @Override
     public void write(byte[] b) throws IOException {
+        checkCancelled();
+        out.write(b);
+    }
+
+    private void checkCancelled() {
         if (listener.isCanceled()) {
-            throw new ProcessDismissedException();
+            throw new ProcessDismissedException(listener);
         }
-        super.write(b);
     }
 
     @Override
     public void write(byte[] b, int off, int len) throws IOException {
-        if (listener.isCanceled()) {
-            throw new ProcessDismissedException();
-        }
-        super.write(b, off, len);
+        checkCancelled();
+        out.write(b, off, len);
     }
 
     @Override
     public void write(int b) throws IOException {
-        if (listener.isCanceled()) {
-            throw new ProcessDismissedException();
-        }
-        super.write(b);
+        checkCancelled();
+        out.write(b);
     }
 
 }

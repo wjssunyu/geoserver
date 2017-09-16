@@ -22,6 +22,8 @@ import java.util.TreeMap;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 
+import com.google.common.collect.Lists;
+
 import org.eclipse.xsd.XSDComplexTypeDefinition;
 import org.eclipse.xsd.XSDCompositor;
 import org.eclipse.xsd.XSDDerivationMethod;
@@ -42,10 +44,14 @@ import org.eclipse.xsd.util.XSDSchemaLocator;
 import org.geoserver.catalog.Catalog;
 import org.geoserver.catalog.FeatureTypeInfo;
 import org.geoserver.catalog.NamespaceInfo;
+import org.geoserver.catalog.WorkspaceInfo;
 import org.geoserver.config.GeoServer;
+import org.geoserver.ows.LocalWorkspace;
 import org.geoserver.ows.URLMangler.URLType;
 import org.geoserver.ows.util.ResponseUtils;
 import org.geoserver.platform.GeoServerResourceLoader;
+import org.geoserver.platform.resource.Resource;
+import org.geoserver.platform.resource.Resource.Type;
 import org.geoserver.wfs.GMLInfo;
 import org.geoserver.wfs.WFSInfo;
 import org.geotools.feature.NameImpl;
@@ -55,6 +61,7 @@ import org.geotools.wfs.v2_0.WFS;
 import org.geotools.xml.Configuration;
 import org.geotools.xml.Schemas;
 import org.geotools.xs.XS;
+import org.opengis.feature.simple.SimpleFeatureType;
 import org.opengis.feature.type.AttributeDescriptor;
 import org.opengis.feature.type.AttributeType;
 import org.opengis.feature.type.ComplexType;
@@ -192,13 +199,38 @@ public abstract class FeatureTypeSchemaBuilder {
             String targetNamespace = catalog.getNamespaceByPrefix(targetPrefix).getURI();
             schema.setTargetNamespace(targetNamespace);
             schema.getQNamePrefixToNamespaceMap().put(targetPrefix, targetNamespace);
-            // add secondary namespaces from catalog
-            for (NamespaceInfo nameSpaceinfo : catalog.getNamespaces()) {
-                if (!schema.getQNamePrefixToNamespaceMap().containsKey(nameSpaceinfo.getPrefix())) {
-                    schema.getQNamePrefixToNamespaceMap().put(nameSpaceinfo.getPrefix(),
-                            nameSpaceinfo.getURI());
+
+            boolean simple = true;
+            for (int i = 0; i < featureTypeInfos.length && simple; i++) {
+                try {
+                    simple = featureTypeInfos[i].getFeatureType() instanceof SimpleFeatureType;
+                }
+                catch(IOException e) {
+                    // ignore so that broken feature types don't prevent others from continuing to work
                 }
             }
+
+            if (!simple) {
+                // complex features may belong to different workspaces
+                WorkspaceInfo localWorkspace = LocalWorkspace.get();
+                if (localWorkspace != null) {
+                    // deactivate workspace filtering
+                    LocalWorkspace.remove();
+                }
+                // add secondary namespaces from the full catalog
+                try {
+                    for (NamespaceInfo nameSpaceinfo : catalog.getNamespaces()) {
+                        if (!schema.getQNamePrefixToNamespaceMap().containsKey(nameSpaceinfo.getPrefix())) {
+                            schema.getQNamePrefixToNamespaceMap().put(nameSpaceinfo.getPrefix(),
+                                    nameSpaceinfo.getURI());
+                        }
+                    }
+                } finally {
+                    // make sure local workspace filtering is repositioned
+                    LocalWorkspace.set(localWorkspace);
+                }
+            }
+
             // would result in some xsd:include or xsd:import if schema location is specified
             try {
                 FeatureType featureType = featureTypeInfos[0].getFeatureType();
@@ -328,19 +360,14 @@ public abstract class FeatureTypeSchemaBuilder {
                     schema.getContents().add(imprt);
                     
                     if (resolved != null) {
-                        ((XSDSchemaImpl)resolved).imported(imprt);
+                        final XSDSchemaImpl rs = (XSDSchemaImpl)resolved;
+                        synchronized(rs.eAdapters()) {
+                            rs.imported(imprt);
+                        }
                     }
                 }
             }
         }
-
-//        for (Iterator i = schema.getContents().iterator(); i.hasNext();) {
-//            Object o = i.next();
-//            if (o instanceof XSDImport) {
-//                ((XSDSchemaImpl)((XSDImport)o).getResolvedSchema()).imported((XSDImport)o);
-//                
-//            }
-//        }
         return schema;
     }
 
@@ -374,8 +401,9 @@ public abstract class FeatureTypeSchemaBuilder {
      *            set of schemaLocations used to prevent duplicate includes
      */
     private void addReference(XSDSchema schema, XSDFactory factory, String namespace,
-            String schemaLocation, Map<String, String> imports, Set<String> includes) {
+        String schemaLocation, Map<String, String> imports, Set<String> includes) {
         if (getWfsSchema() != null && imports.get(getWfsSchema().getTargetNamespace()) == null) {
+            synchronized(Schemas.class) {
             /*
              * Add an import for the WFS schema. Needed for GML32OutputFormat only. See
              * GML32.importGMLSchema where a similar import is used for simple features (generated
@@ -383,14 +411,18 @@ public abstract class FeatureTypeSchemaBuilder {
              * 
              * Not that this does not break DescribeFeatureType because it uses WFS 1.1.
              */
-            schema.getQNamePrefixToNamespaceMap().put("wfs", getWfsSchema().getTargetNamespace());
-            XSDImport wfsImport = factory.createXSDImport();
-            wfsImport.setNamespace(getWfsSchema().getTargetNamespace());
-            wfsImport.setSchemaLocation(getWfsSchema().getSchemaLocation());
-            wfsImport.setResolvedSchema(getWfsSchema());
-            schema.getContents().add(wfsImport);
-            ((XSDSchemaImpl)getWfsSchema()).imported(wfsImport);
-            imports.put(getWfsSchema().getTargetNamespace(), getWfsSchema().getSchemaLocation());
+                schema.getQNamePrefixToNamespaceMap().put("wfs", getWfsSchema().getTargetNamespace());
+                XSDImport wfsImport = factory.createXSDImport();
+                wfsImport.setNamespace(getWfsSchema().getTargetNamespace());
+                wfsImport.setSchemaLocation(getWfsSchema().getSchemaLocation());
+                wfsImport.setResolvedSchema(getWfsSchema());
+                schema.getContents().add(wfsImport);
+                final XSDSchemaImpl wfsSchema = (XSDSchemaImpl)getWfsSchema();
+                synchronized(wfsSchema.eAdapters()) {
+                    wfsSchema.imported(wfsImport);
+                }
+                imports.put(getWfsSchema().getTargetNamespace(), getWfsSchema().getSchemaLocation());
+            }
         }
         if (namespace.equals(schema.getTargetNamespace())) {
             if (includes.contains(schemaLocation)) {
@@ -453,10 +485,12 @@ public abstract class FeatureTypeSchemaBuilder {
      */
     private void addImport(XSDSchema schema, XSDFactory factory, String namespace,
             String schemaLocation) {
-        XSDImport xsdImport = factory.createXSDImport();
-        xsdImport.setNamespace(namespace);
-        xsdImport.setSchemaLocation(schemaLocation);
-        schema.getContents().add(xsdImport);
+        synchronized(Schemas.class) {
+            XSDImport xsdImport = factory.createXSDImport();
+            xsdImport.setNamespace(namespace);
+            xsdImport.setSchemaLocation(schemaLocation);
+            schema.getContents().add(xsdImport);
+        }
     }
 
     /**
@@ -519,16 +553,11 @@ public abstract class FeatureTypeSchemaBuilder {
         String ds = featureTypeMeta.getStore().getName();
         String name = featureTypeMeta.getName();
 
-        File schemaFile = null;
+        Resource schemaFile = resourceLoader.get("workspaces/" + ws + "/" + ds + "/" + name + "/schema.xsd");
 
-        try {
-            schemaFile = resourceLoader.find("workspaces/" + ws + "/" + ds + "/" + name + "/schema.xsd");
-        } catch (IOException e1) {
-        }
-
-        if (schemaFile != null) {
+        if (schemaFile.getType() == Type.RESOURCE) {
             if (logger.isLoggable(Level.FINE)) {
-                logger.fine("Found customized schema.xsd: " + schemaFile.getAbsolutePath());    
+                logger.fine("Found customized schema.xsd: " + schemaFile.path());    
             }
             
             //schema file found, parse it and lookup the complex type
@@ -547,10 +576,10 @@ public abstract class FeatureTypeSchemaBuilder {
             
             XSDSchema ftSchema = null;
             try {
-                ftSchema = Schemas.parse(schemaFile.getAbsolutePath(), locators, resolvers);
+                ftSchema = Schemas.parse(schemaFile.file().getAbsolutePath(), locators, resolvers);
             } catch (IOException e) {
                 logger.log(Level.WARNING,
-                    "Unable to parse schema: " + schemaFile.getAbsolutePath(), e);
+                    "Unable to parse schema: " + schemaFile.file().getAbsolutePath(), e);
             }
 
             if (ftSchema != null) {
@@ -701,7 +730,7 @@ public abstract class FeatureTypeSchemaBuilder {
      * @param complexType
      * @param schema
      * @param factory
-     * @return
+     *
      */
     private XSDComplexTypeDefinition buildComplexSchemaContent(ComplexType complexType,
             XSDSchema schema, XSDFactory factory) {
@@ -962,7 +991,7 @@ public abstract class FeatureTypeSchemaBuilder {
             describeFeatureTypeParams =  params("request", "DescribeFeatureType", 
                     "version", "2.0.0",
                     "service", "WFS", 
-                    "outputFormat", "text/xml; subtype=gml/3.2");
+                    "outputFormat", "application/gml+xml; version=3.2");
             xmlConfiguration = new org.geotools.gml3.v3_2.GMLConfiguration();
         }
 
@@ -989,25 +1018,30 @@ public abstract class FeatureTypeSchemaBuilder {
         
         @Override
         protected void importGMLSchema(XSDSchema schema, XSDFactory factory, String baseUrl) {
-            XSDImport imprt;
-            try {
-                imprt = factory.createXSDImport();
-                imprt.setNamespace(gmlNamespace);
-                //imprt.setNamespace( WFS.getInstance().getSchema().getTargetNamespace() );
-                imprt.setSchemaLocation(ResponseUtils.buildSchemaURL(baseUrl, gmlSchemaLocation));
-                //imprt.setResolvedSchema(WFS.getInstance().getSchema());
-                imprt.setResolvedSchema( GML.getInstance().getSchema() );
-                schema.getContents().add( imprt );
-                
-                schema.getQNamePrefixToNamespaceMap().put("wfs", WFS.NAMESPACE);
-                //imprt = Schemas.importSchema(schema, WFS.getInstance().getSchema());
-                ((XSDSchemaImpl)WFS.getInstance().getSchema()).imported(imprt);
-                //((XSDSchemaImpl)schema).resolveSchema(WFS.NAMESPACE);
-                
-                
-                //schema.getContents().add(imprt);
-            } catch (IOException e) {
-                throw new RuntimeException(e);
+            synchronized(Schemas.class) {
+                XSDImport imprt;
+                try {
+                    imprt = factory.createXSDImport();
+                    imprt.setNamespace(gmlNamespace);
+                    //imprt.setNamespace( WFS.getInstance().getSchema().getTargetNamespace() );
+                    imprt.setSchemaLocation(ResponseUtils.buildSchemaURL(baseUrl, gmlSchemaLocation));
+                    //imprt.setResolvedSchema(WFS.getInstance().getSchema());
+                    imprt.setResolvedSchema( GML.getInstance().getSchema() );
+                    schema.getContents().add( imprt );
+                    
+                    schema.getQNamePrefixToNamespaceMap().put("wfs", WFS.NAMESPACE);
+                    //imprt = Schemas.importSchema(schema, WFS.getInstance().getSchema());
+                    final XSDSchemaImpl xsdSchema = (XSDSchemaImpl)WFS.getInstance().getSchema();
+                    synchronized(xsdSchema.eAdapters()) {
+                        xsdSchema.imported(imprt);
+                    }
+                    //((XSDSchemaImpl)schema).resolveSchema(WFS.NAMESPACE);
+                    
+                    
+                    //schema.getContents().add(imprt);
+                } catch (IOException e) {
+                    throw new RuntimeException(e);
+                }
             }
             
         }
